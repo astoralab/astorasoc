@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ title }}</h1><p>Create a focused investigation workspace and assign ownership immediately.</p></div></div>
+{% if form.due_at is defined %}
+<form method="post" class="manual-case-layout" autocomplete="off">
+  {{ form.hidden_tag() }}
+  <section class="glass manual-case-form">
+    {% if form.errors %}
+    <div class="form-errors">
+      {% for field, errors in form.errors.items() %}
+        {% for error in errors %}<p>{{ field|replace('_', ' ')|title }}: {{ error }}</p>{% endfor %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div>{{ form.title.label(class="form-label") }}{{ form.title(class="form-control", placeholder="Suspicious privileged account activity") }}</div>
+    <div class="manual-case-row">
+      <div>{{ form.case_type.label(class="form-label") }}{{ form.case_type(class="form-select") }}</div>
+      <div>{{ form.severity.label(class="form-label") }}{{ form.severity(class="form-select") }}</div>
+      <div>{{ form.due_at.label(class="form-label") }}{{ form.due_at(class="form-control") }}</div>
+    </div>
+    <div class="manual-case-row">
+      <div>
+        {{ form.asset_id.label(class="form-label") }}
+        {{ form.asset_id(class="form-select") }}
+        {% if not asset_count %}<small class="muted">No assets found. Add an asset before creating a case.</small>{% endif %}
+      </div>
+    </div>
+    <div class="manual-case-row">
+      <div>
+        {{ form.assignee_ids.label(class="form-label") }}
+        <details class="manual-assignee-dropdown" data-multi-dropdown>
+          <summary class="form-control manual-assignee-summary">
+            <span data-multi-label>Select Analyst</span>
+            <i data-lucide="chevron-down"></i>
+          </summary>
+          <div class="manual-assignee-menu">
+            {% for id, label in form.assignee_ids.choices %}
+            <label class="assignee-option">
+              <input type="checkbox" name="{{ form.assignee_ids.name }}" value="{{ id }}" {% if form.assignee_ids.data and id in form.assignee_ids.data %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
+            {% else %}
+            <span class="muted">No active analysts found.</span>
+            {% endfor %}
+          </div>
+        </details>
+      </div>
+      <div>
+        {{ form.playbook_id.label(class="form-label") }}
+        {{ form.playbook_id(class="form-select") }}
+        <small class="muted">Default uses the selected case type and SIEM-independent playbook rules.</small>
+        {% if not playbook_count %}<small class="muted">No active playbooks found. Create one from Playbooks first.</small>{% endif %}
+      </div>
+    </div>
+    <div>{{ form.description.label(class="form-label") }}{{ form.description(class="form-control", rows=7, placeholder="Brief description of why this case requires investigation") }}</div>
+    <div class="actions">{{ form.submit(class="btn btn-primary") }}<a class="btn btn-ghost" href="{{ url_for('cases.cases') }}">Cancel</a></div>
+  </section>
+  <aside class="glass manual-case-summary">
+    <span class="eyebrow">Case metadata</span>
+    <div class="manual-meta-item"><span>Case ID</span><b>{{ preview_case_id }}</b></div>
+    <div class="manual-meta-item"><span>Status</span><b><span class="badge status status-assigned">Assigned</span></b></div>
+    <div class="manual-meta-item"><span>Case Type</span><b>{{ form.case_type.data or 'Manual Investigation' }}</b></div>
+    <div class="manual-meta-item"><span>Created By</span><b>{{ current_user.full_name }}</b><small>{{ current_user.role }}</small></div>
+    <div class="manual-meta-item"><span>Created Date</span><b>{{ format_short_datetime(created_preview_at) }}</b></div>
+    <div class="manual-meta-item"><span>Due Date</span><b><span class="due-badge due-{{ due_state(due_preview_at) }}">{{ format_short_datetime(due_preview_at) if due_preview_at else 'Select due date' }}</span></b></div>
+  </aside>
+</form>
+{% else %}
+<form method="post" class="glass case-edit-form" autocomplete="off">
+  {{ form.hidden_tag() }}
+  {% if form.errors %}
+  <div class="form-errors">
+    {% for field, errors in form.errors.items() %}
+      {% for error in errors %}<p>{{ field|replace('_', ' ')|title }}: {{ error }}</p>{% endfor %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="case-edit-grid">
+    <div class="span-2">{{ form.title.label(class="form-label") }}{{ form.title(class="form-control") }}</div>
+    <div>{{ form.severity.label(class="form-label") }}{{ form.severity(class="form-select") }}</div>
+    <div>{{ form.status.label(class="form-label") }}{{ form.status(class="form-select") }}</div>
+    <div>{{ form.assignee_id.label(class="form-label") }}{{ form.assignee_id(class="form-select") }}</div>
+    <div>{{ form.source.label(class="form-label") }}{{ form.source(class="form-select") }}</div>
+    <div>{{ form.incident_type.label(class="form-label") }}{{ form.incident_type(class="form-select") }}</div>
+    <div>{{ form.business_impact.label(class="form-label") }}{{ form.business_impact(class="form-select") }}</div>
+    <div>{{ form.rule_id.label(class="form-label") }}{{ form.rule_id(class="form-control") }}</div>
+    <div>{{ form.mitre_tactic.label(class="form-label") }}{{ form.mitre_tactic(class="form-control") }}</div>
+    <div>{{ form.mitre_technique.label(class="form-label") }}{{ form.mitre_technique(class="form-control") }}</div>
+    <div>{{ form.affected_host.label(class="form-label") }}{{ form.affected_host(class="form-control") }}</div>
+    <div>{{ form.affected_user.label(class="form-label") }}{{ form.affected_user(class="form-control") }}</div>
+    <div>{{ form.source_ip.label(class="form-label") }}{{ form.source_ip(class="form-control") }}</div>
+    <div>{{ form.destination_ip.label(class="form-label") }}{{ form.destination_ip(class="form-control") }}</div>
+    <div>{{ form.cve_id.label(class="form-label") }}{{ form.cve_id(class="form-control", placeholder="CVE-2026-3636") }}</div>
+    <div>{{ form.cvss_score.label(class="form-label") }}{{ form.cvss_score(class="form-control", placeholder="9.8") }}</div>
+    <div>{{ form.affected_software.label(class="form-label") }}{{ form.affected_software(class="form-control") }}</div>
+    <div>{{ form.affected_version.label(class="form-label") }}{{ form.affected_version(class="form-control") }}</div>
+    <div>{{ form.fixed_version.label(class="form-label") }}{{ form.fixed_version(class="form-control") }}</div>
+    <div>{{ form.patch_status.label(class="form-label") }}{{ form.patch_status(class="form-select") }}</div>
+    <div>{{ form.remediation_owner.label(class="form-label") }}{{ form.remediation_owner(class="form-control") }}</div>
+    <div class="span-2">{{ form.description.label(class="form-label") }}{{ form.description(class="form-control", rows=5) }}</div>
+    <div class="span-2">{{ form.root_cause.label(class="form-label") }}{{ form.root_cause(class="form-control", rows=3) }}</div>
+    <div class="span-2">{{ form.resolution_summary.label(class="form-label") }}{{ form.resolution_summary(class="form-control", rows=3) }}</div>
+    <div class="span-2">{{ form.validation_performed.label(class="form-label") }}{{ form.validation_performed(class="form-control", rows=3) }}</div>
+    <div class="span-2">{{ form.lessons_learned.label(class="form-label") }}{{ form.lessons_learned(class="form-control", rows=3) }}</div>
+    <div class="span-2">{{ form.closure_notes.label(class="form-label") }}{{ form.closure_notes(class="form-control", rows=3) }}</div>
+    <div class="span-2">{{ form.closure_reason.label(class="form-label") }}{{ form.closure_reason(class="form-control", rows=3) }}</div>
+  </div>
+  <div class="actions">{{ form.submit(class="btn btn-primary") }}<a class="btn btn-ghost" href="{{ url_for('cases.cases') }}">Cancel</a></div>
+</form>
+{% endif %}
+{% endblock %}

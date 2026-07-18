@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Audit Logs - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Audit Logs</h1><p>Sensitive actions and authentication events.</p></div>
+  <div class="actions page-head-actions">
+    <details class="date-filter-menu">
+      <summary class="icon-btn" title="Filter logs by date" aria-label="Filter logs by date"><i data-lucide="calendar-days"></i></summary>
+      <form class="date-filter-popover" method="get" action="{{ url_for('settings.audit_logs') }}">
+        <label>Date<input class="form-control form-control-sm" type="date" name="date" value="{{ date_filter.date }}"></label>
+        <div class="date-filter-actions"><button class="btn btn-sm btn-primary">Apply</button><a class="btn btn-sm btn-ghost" href="{{ url_for('settings.audit_logs') }}">Clear</a></div>
+      </form>
+    </details>
+    <form class="audit-download" method="get" action="{{ url_for('settings.download_audit_logs') }}">
+      <input type="hidden" name="date" value="{{ date_filter.date }}">
+      <button class="btn btn-sm btn-primary"><i data-lucide="download"></i>Download ZIP</button>
+    </form>
+  </div>
+</div>
+<div class="glass">
+  <div class="table-responsive">
+    <table class="table table-dark table-hover align-middle">
+      <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Details</th><th>IP</th></tr></thead>
+      <tbody>
+      {% for log in logs %}
+      <tr><td>{{ format_short_datetime(log.created_at) }}</td><td>{{ log.actor.username if log.actor else 'System' }}</td><td>{{ log.action }}</td><td>{{ log.details or '-' }}</td><td>{{ log.ip_address or '-' }}</td></tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">No audit logs.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="pagination-row">
+    <div class="pagination">
+      {% for number in range(1, pages + 1) %}
+      <a class="btn btn-sm btn-ghost {% if number == page %}active{% endif %}" href="{{ url_for('settings.audit_logs', page=number, date=date_filter.date) }}">{{ number }}</a>
+      {% endfor %}
+    </div>
+    <form method="post" action="{{ url_for('settings.manual_audit_cleanup') }}" data-confirm-danger="AstoraSOC will archive and verify old logs before deleting. Continue manual cleanup?" data-confirm-title="Run audit cleanup?" data-confirm-text="Run Cleanup">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-ghost">Run Cleanup</button>
+    </form>
+    <form method="post" action="{{ url_for('settings.delete_all_audit_logs') }}" data-confirm-danger="This archives, verifies, then deletes all visible audit logs. Continue?" data-confirm-title="Archive and delete logs?" data-confirm-text="Archive & Delete">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-ghost">Archive & Delete All</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

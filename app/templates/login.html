@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Login - AstoraSOC{% endblock %}
+{% block content %}
+<script>
+  try {
+    sessionStorage.setItem("raven-sidebar", "collapsed");
+    localStorage.removeItem("raven-sidebar");
+  } catch (error) {}
+</script>
+<section class="login-page-stack">
+  <div class="login-brand">
+    {% if has_logo %}
+    <img class="theme-logo logo-dark" src="{{ url_for('static', filename='img/logo.png') }}" alt="AstoraSOC">
+    {% if has_light_logo %}<img class="theme-logo logo-light" src="{{ url_for('static', filename='img/logo-light.png') }}" alt="AstoraSOC">{% endif %}
+    {% else %}
+    <div class="text-logo"><span class="brand-mark">R</span></div>
+    {% endif %}
+  </div>
+  <form method="post" class="login-panel stack" autocomplete="on" data-login-form data-allow-autocomplete="1">
+    {{ form.hidden_tag() }}
+    {{ form.username.label(class="form-label") }}
+    {{ form.username(class="form-control", autocomplete="username", autocapitalize="none", spellcheck="false", **{"data-remember-username": "1", "data-allow-autocomplete": "1"}) }}
+    {{ form.password.label(class="form-label") }}
+    <div class="password-field">
+      {{ form.password(class="form-control", id="loginPassword", autocomplete="new-password", spellcheck="false", readonly="readonly", **{"data-no-password-autofill": "1"}) }}
+      <button class="password-toggle" type="button" title="Show password" aria-label="Show password" data-toggle-secret="#loginPassword" data-secret-label="password" data-secret-hidden-icon="eye" data-secret-visible-icon="eye-off"><i data-lucide="eye"></i></button>
+    </div>
+    {{ form.submit(class="btn btn-primary login-submit") }}
+    <p class="login-support-note">Contact your AstoraSOC administrator for account access or password reset support.</p>
+  </form>
+  <a class="login-version-link" href="https://www.astoralab.com" target="_blank" rel="noopener">AstoraSOC v1.0</a>
+</section>
+<div class="login-loading-overlay" aria-live="polite" aria-hidden="true" data-login-loading-overlay>
+  <div class="login-loading-stage">
+    <div class="login-loader-wordmark">ASTORALAB</div>
+    <div class="login-loading-copy">
+      <b>Securing Session</b>
+      <span>Preparing your SOC workspace.</span>
+    </div>
+    <div class="login-neural-track" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+</div>
+{% endblock %}

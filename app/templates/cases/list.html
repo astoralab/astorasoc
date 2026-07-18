@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% from "assets/_asset_badge.html" import asset_badge %}
+{% block title %}Cases - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Cases</h1><p>Investigate incidents, track ownership, and route closure through Lead review.</p></div>
+  <div class="actions page-head-actions">
+    <div class="status-filter-actions">
+      {% for value, label in [('', 'All'), ('ASSIGNED', 'Assigned'), ('INVESTIGATING', 'Investigating'), ('SUBMITTED_FOR_REVIEW', 'Pending'), ('CLOSED', 'Closed')] %}
+      <a class="btn btn-ghost {% if (status or '') == value %}active{% endif %}" href="{{ url_for('cases.cases', status=value, date=date_filter.date) }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <details class="date-filter-menu">
+      <summary class="icon-btn" title="Filter by date" aria-label="Filter by date"><i data-lucide="calendar-days"></i></summary>
+      <form class="date-filter-popover" method="get" action="{{ url_for('cases.cases') }}">
+        <input type="hidden" name="status" value="{{ status or '' }}">
+        <label>Date<input class="form-control form-control-sm" type="date" name="date" value="{{ date_filter.date }}"></label>
+        <div class="date-filter-actions"><button class="btn btn-sm btn-primary">Apply</button><a class="btn btn-sm btn-ghost" href="{{ url_for('cases.cases', status=status or '') }}">Clear</a></div>
+      </form>
+    </details>
+    {% if role_allows(current_user.role, 'Admin', 'Lead') %}<a class="btn btn-primary icon-text-btn" href="{{ url_for('cases.new_case') }}" title="Create case"><i data-lucide="plus"></i><span>Case</span></a>{% endif %}
+  </div>
+</div>
+<div class="glass">
+  <div class="table-responsive">
+    <table class="table table-dark table-hover align-middle">
+      <thead>
+        <tr>
+          <th>ID</th><th>Title</th><th>Severity</th><th>Asset</th><th>Status</th><th>Assignee</th><th>Due</th><th>Updated</th>
+          {% if role_allows(current_user.role, 'Lead') %}<th>Actions</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for case in cases %}
+      {% set selected_ids = case.assigned_users|map(attribute='id')|list %}
+      <tr data-case-row="{{ case.id }}">
+        <td>{{ tracking_label(case) }}</td>
+        <td>
+          {% if role_allows(current_user.role, 'Lead') and case.status == 'SUBMITTED_FOR_REVIEW' %}
+          <a href="{{ url_for('cases.review_detail', case_id=case.id) }}">{{ case.title }}</a>
+          {% else %}
+          <a href="{{ url_for('cases.case_detail', case_id=case.id) }}">{{ case.title }}</a>
+          {% endif %}
+        </td>
+        <td><span class="badge sev-{{ case.severity|lower }}">{{ case.severity }}</span></td>
+        <td>{{ asset_badge(case.asset, true) }}</td>
+        <td><span class="badge status status-{{ case.status|lower|replace('_', '-') }}" data-case-status="{{ case.id }}">{{ status_label(case.status) }}</span></td>
+        <td>
+          <div class="owner-list">
+            {% for owner in case.assigned_users %}
+            <button class="owner-chip role-{{ owner.role|lower|replace(' ', '-') }}" type="button" data-profile-card="{{ owner.id }}">{{ owner.full_name }}</button>
+            {% else %}
+              {% if case.assignee %}
+              <button class="owner-chip role-{{ case.assignee.role|lower|replace(' ', '-') }}" type="button" data-profile-card="{{ case.assignee.id }}">{{ case.assignee.full_name }}</button>
+              {% else %}
+              <span class="muted">Unassigned</span>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </td>
+        <td>
+          <span class="due-badge due-{{ due_state(case.due_at) }}">{{ format_short_datetime(case.due_at) if case.due_at else 'No due date' }}</span>
+        </td>
+        <td data-case-updated="{{ case.id }}">{{ format_short_datetime(case.updated_at) }}</td>
+        {% if role_allows(current_user.role, 'Lead') %}
+        <td class="case-actions-cell">
+          <details class="assignee-picker">
+            <summary class="btn btn-sm btn-ghost"><i data-lucide="users-round"></i><span>Assign</span></summary>
+            <form method="post" action="{{ url_for('cases.case_workflow_action', case_id=case.id, status=status) }}" class="assignee-picker-panel">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="assign">
+              <div class="assign-panel-head">
+                <b>Assign</b>
+                <small>{{ tracking_label(case) }}</small>
+              </div>
+              <div class="assignee-options">
+                {% for id, label in analysts %}
+                {% if id %}
+                <label class="assignee-option">
+                  <input type="checkbox" name="assignee_ids" value="{{ id }}" {% if id in selected_ids or id == (case.assignee_id or 0) %}checked{% endif %}>
+                  <span>{{ label }}</span>
+                </label>
+                {% endif %}
+                {% endfor %}
+              </div>
+              <button class="btn btn-sm btn-primary" type="submit">Save assignment</button>
+            </form>
+          </details>
+          <details class="more-actions case-row-more">
+            <summary class="btn btn-sm btn-ghost"><i data-lucide="more-horizontal"></i></summary>
+            <div class="case-more-panel">
+              {% if case.status in ['SUBMITTED_FOR_REVIEW', 'ASSIGNED', 'INVESTIGATING'] %}
+              <form method="post" action="{{ url_for('cases.case_workflow_action', case_id=case.id, status=status) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="reopen">
+                <button class="btn btn-sm btn-ghost" data-confirm-danger="Send this case back to the assigned analyst for more work?">Request More Work</button>
+              </form>
+              {% else %}
+              <span class="muted">No extra action</span>
+              {% endif %}
+            </div>
+          </details>
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="{% if role_allows(current_user.role, 'Lead') %}9{% else %}8{% endif %}" class="muted">No cases found.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="profile-modal-backdrop" id="profileModalBackdrop">
+  {% for user in users %}
+  <div class="profile-popover" id="profile-card-{{ user.id }}" role="dialog" aria-modal="true">
+    <button class="profile-modal-close" type="button" data-close-profile><i data-lucide="x"></i></button>
+    <button class="profile-modal-avatar" type="button" data-image-preview="{{ url_for('profile.profile_picture', filename=user.profile_picture) if user.profile_picture else '' }}">
+      {% if user.profile_picture %}
+      <img src="{{ url_for('profile.profile_picture', filename=user.profile_picture) }}" alt="{{ user.full_name }}">
+      {% else %}{{ user.full_name[:1] }}{% endif %}
+    </button>
+    <b class="profile-modal-name role-{{ user.role|lower|replace(' ', '-') }}">
+      {% set role_meta = role_styles.get(user.role) %}
+      {{ user.full_name }}
+      {% if role_meta and role_meta.icon %}<span class="role-inline-icon" title="{{ user.role }}"><img src="{{ url_for('users.role_icon', filename=role_meta.icon) }}" alt="{{ user.role }}"></span>{% endif %}
+    </b>
+    <span class="role-badge role-{{ user.role|lower|replace(' ', '-') }}">{{ user.role }}</span>
+    <small>{{ user.email }}</small>
+    {% if user.phone %}<small>{{ user.phone }}</small>{% endif %}
+    {% if user.job_title or user.department %}<small>{{ user.job_title }}{% if user.department %} / {{ user.department }}{% endif %}</small>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

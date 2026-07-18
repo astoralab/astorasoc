@@ -1,0 +1,47 @@
+name: astorasoc
+
+services:
+  web:
+    build: .
+    image: astorasoc-web
+    container_name: astorasoc-web
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "5000:5000"
+    volumes:
+      - astorasoc_uploads:/app/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=5).read()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  db:
+    image: mysql:8.4
+    container_name: astorasoc-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-astorasoc}
+      MYSQL_USER: ${MYSQL_USER:-astorasoc}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-this-database-password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-this-root-password}
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql_data:
+    name: astorasoc_mysql_data
+  astorasoc_uploads:
+    name: astorasoc_uploads

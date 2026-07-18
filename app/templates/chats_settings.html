@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Chat Settings - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Chat Settings</h1><p>Manage chat cleanup and emoji options.</p></div>
+  <a class="btn btn-ghost" href="{{ url_for('chats.chats') }}">Back to Chats</a>
+</div>
+<div class="glass stack">
+  <section class="settings-card">
+    <h2>Emoji Library</h2>
+    <form method="post" enctype="multipart/form-data" class="actions auto-upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="upload_emoji">
+      <label class="btn btn-ghost upload-emoji-trigger">
+        <i data-lucide="upload"></i> Upload emoji
+        <input type="file" name="emoji_file" accept="image/*">
+      </label>
+    </form>
+    <div class="emoji-admin-grid">
+      {% for emoji in emojis %}
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="delete_emoji">
+        <input type="hidden" name="emoji" value="{{ emoji }}">
+        <button class="emoji-admin-item" title="Delete emoji">{{ emoji_html(emoji)|safe }}<i data-lucide="x"></i></button>
+      </form>
+      {% endfor %}
+    </div>
+  </section>
+  <section class="settings-card danger-zone">
+    <h2>Delete All Chats</h2>
+    <p>This permanently removes every chat message and reaction from the database.</p>
+    <form method="post" data-confirm-danger="Delete all chats permanently?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="delete_all">
+      <button class="btn btn-ghost"><i data-lucide="trash-2"></i> Delete all chats</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

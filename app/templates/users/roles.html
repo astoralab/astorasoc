@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Roles - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Roles</h1><p>Create roles, assign permission presets, and tune role colors.</p></div>
+  <a class="btn btn-ghost" href="{{ url_for('users.users') }}">Users</a>
+</div>
+<div class="glass stack">
+  <form method="post" class="role-create-grid" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="create">
+    <div>
+      <label class="form-label">Role name</label>
+      <input class="form-control" name="role_name" maxlength="20" placeholder="SOC Manager">
+    </div>
+    <div>
+      <label class="form-label">Color</label>
+      <input class="form-control form-control-color" type="color" name="role_color" value="#24d6a3">
+    </div>
+    <div>
+      <label class="form-label">Permission preset</label>
+      <select class="form-select" name="role_preset">
+        {% for role in presets %}<option value="{{ role }}">{{ role }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="form-label">Permission notes</label>
+      <input class="form-control" name="role_permissions" placeholder="Short permission description">
+    </div>
+    <button class="btn btn-primary">Create role</button>
+  </form>
+
+  <form method="post" enctype="multipart/form-data" class="role-admin-panel" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for role, meta in roles.items() %}
+    <section class="role-editor">
+      <div>
+        <span class="role-badge role-{{ meta.slug }}">{{ role }}</span>
+        <textarea class="form-control mt-2" name="permissions_{{ meta.slug }}">{{ meta.permissions }}</textarea>
+      </div>
+      <label>
+        <span>Color</span>
+        <input class="form-control form-control-color" type="color" name="color_{{ meta.slug }}" value="{{ meta.color }}">
+      </label>
+      <input type="hidden" name="preset_{{ meta.slug }}" value="{{ meta.preset }}">
+      <div class="role-editor-actions">
+        <label class="icon-btn role-icon-upload" title="Upload role icon">
+          {% if meta.icon %}<img src="{{ url_for('users.role_icon', filename=meta.icon) }}" alt="{{ role }} icon">{% else %}<i data-lucide="upload"></i>{% endif %}
+          <input type="file" name="icon_{{ meta.slug }}">
+        </label>
+        {% if not meta.system %}
+        <button class="icon-btn" title="Delete role" name="action" value="delete" onclick="this.form.role.value='{{ role }}';" data-confirm-danger="Delete this role? Users with this role become Viewer."><i data-lucide="trash-2"></i></button>
+        {% endif %}
+      </div>
+    </section>
+    {% endfor %}
+    <input type="hidden" name="role" value="">
+    <div class="actions">
+      <button class="btn btn-primary" name="action" value="save">Save roles</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

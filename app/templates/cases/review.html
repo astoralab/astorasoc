@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% from "assets/_asset_badge.html" import asset_badge %}
+{% block title %}Review - AstoraSOC{% endblock %}
+{% block content %}
+{% set can_review = role_allows(current_user.role, 'Lead') %}
+<div class="page-head">
+  <div>
+    <h1>Review</h1>
+  </div>
+  <div class="actions review-switch">
+    {% for key, label in [('all', 'All'), ('alerts', 'Alerts'), ('cases', 'Cases')] %}
+    <a class="btn btn-ghost {% if view == key %}active{% endif %}" href="{{ url_for('cases.review', view=key) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if view in ['all', 'alerts'] %}
+<section class="review-section">
+  <div class="section-head">
+    <div>
+      <h2>Alert Reviews</h2>
+      <p>Validate analyst-triaged alerts and promote confirmed incidents.</p>
+    </div>
+    <span class="badge status">{{ alerts|length }}</span>
+  </div>
+  <div class="glass review-table-wrap">
+    <div class="table-responsive">
+      <table class="table table-dark align-middle review-table review-grid-table alert-review-table">
+        <colgroup>
+          <col class="review-col-title">
+          <col class="review-col-severity">
+          <col class="review-col-asset">
+          <col class="review-col-context">
+          <col class="review-col-owner">
+          <col class="review-col-actions">
+        </colgroup>
+        <thead><tr><th>Alert</th><th>Severity</th><th>Asset</th><th>Sent / Time</th><th>Assign</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for alert in alerts %}
+        <tr>
+          <td class="review-alert-title-cell">
+            <a class="review-title-link" href="{{ url_for('alerts.alerts', status='PENDING_REVIEW') }}">{{ tracking_label(alert) }} {{ alert.title }}</a>
+          </td>
+          <td><span class="severity-pill sev-{{ alert.severity|lower }}">{{ alert.severity }}</span></td>
+          <td>{{ asset_badge(alert.asset, true) }}</td>
+          <td class="review-sent-cell">
+            {% if alert.reviewed_by %}
+            <button class="owner-chip review-profile-chip role-{{ alert.reviewed_by.role|lower|replace(' ', '-') }}" type="button" data-profile-card="{{ alert.reviewed_by.id }}">{{ alert.reviewed_by.full_name }}</button>
+            {% else %}
+            <span class="muted">System</span>
+            {% endif %}
+            <small>{{ format_short_datetime(alert.updated_at or alert.created_at) }}</small>
+          </td>
+          <td>
+            {% if can_review %}
+            <form method="post" action="{{ url_for('cases.review', view=view) }}" class="review-promote-form alert-review-promote">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="alert_id" value="{{ alert.id }}">
+              <input type="hidden" name="action" value="create_case">
+              <details class="assignee-picker review-assignee-picker">
+                <summary class="btn btn-sm btn-ghost"><i data-lucide="users-round"></i><span data-assignee-summary>Assign</span></summary>
+                <div class="assignee-picker-panel">
+                  <div class="assign-panel-head">
+                    <b>Select analysts</b>
+                    <small>optional</small>
+                  </div>
+                  <div class="assignee-options">
+                    {% for id, label in analysts %}
+                    {% if id %}
+                    <label class="assignee-option">
+                      <input type="checkbox" name="assignee_ids" value="{{ id }}">
+                      <span>{{ label }}</span>
+                    </label>
+                    {% endif %}
+                    {% endfor %}
+                  </div>
+                  <button class="btn btn-sm btn-ghost review-normal-btn review-action-btn assignment-save" type="button" data-close-details><i data-lucide="save"></i><span>Save</span></button>
+                </div>
+              </details>
+              <button class="btn btn-sm btn-ghost review-normal-btn review-action-btn">Create Case</button>
+            </form>
+            {% else %}
+            <span class="badge status">View Only</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if can_review %}
+            <form method="post" action="{{ url_for('cases.review', view=view) }}" class="review-fp-form alert-review-fp" data-alert-reason="False positive reason required" data-alert-reason-label="False Positive">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="alert_id" value="{{ alert.id }}">
+              <input type="hidden" name="action" value="false_positive">
+              <input type="hidden" name="reason" value="">
+              <button class="btn btn-sm btn-ghost review-normal-btn review-action-btn">False Positive</button>
+            </form>
+            {% else %}
+            <span class="muted">Lead action required</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted">No alert reviews waiting.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if view in ['all', 'cases'] %}
+<section class="review-section">
+  <div class="section-head">
+    <div>
+      <h2>Case Reviews</h2>
+      <p>Approve closure, request more work, and steer active investigations.</p>
+    </div>
+    <span class="badge status">{{ cases|length }}</span>
+  </div>
+  <div class="glass review-table-wrap">
+    <div class="table-responsive">
+      <table class="table table-dark align-middle review-table review-grid-table">
+        <colgroup>
+          <col class="review-col-title">
+          <col class="review-col-severity">
+          <col class="review-col-asset">
+          <col class="review-col-context">
+          <col class="review-col-owner">
+          <col class="review-col-actions">
+        </colgroup>
+        <thead><tr><th>Case</th><th>Severity</th><th>Asset</th><th>Status</th><th>Assigned</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for case in cases %}
+        <tr>
+          <td class="review-case-title-cell"><a class="review-title-link" href="{{ url_for('cases.review_detail', case_id=case.id) }}">{{ tracking_label(case) }} {{ case.title }}</a></td>
+          <td><span class="severity-pill sev-{{ case.severity|lower }}">{{ case.severity }}</span></td>
+          <td>{{ asset_badge(case.asset, true) }}</td>
+          <td><span class="badge status status-{{ case.status|lower|replace('_', '-') }}">{{ status_label(case.status) }}</span></td>
+          <td>
+            <div class="owner-list review-owner-list">
+              {% for owner in case.assigned_users %}
+              <button class="owner-chip role-{{ owner.role|lower|replace(' ', '-') }}" type="button" data-profile-card="{{ owner.id }}">{{ owner.full_name }}</button>
+              {% else %}
+                {% if case.assignee %}
+                <button class="owner-chip role-{{ case.assignee.role|lower|replace(' ', '-') }}" type="button" data-profile-card="{{ case.assignee.id }}">{{ case.assignee.full_name }}</button>
+                {% else %}
+                <span class="muted">Unassigned</span>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </td>
+          <td class="review-action-cell">
+            {% if can_review %}
+            <div class="review-row-actions">
+            {% if case.status == 'SUBMITTED_FOR_REVIEW' %}
+            <form method="post" action="{{ url_for('cases.review', view=view) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="case_id" value="{{ case.id }}"><input type="hidden" name="action" value="approve_close">
+              <button class="btn btn-sm btn-ghost review-normal-btn review-action-btn" data-confirm-danger="Approve closure for this case?">Approve Close</button>
+            </form>
+            {% elif case.status in ['ASSIGNED', 'INVESTIGATING'] %}
+            {% if case.severity != 'Critical' %}
+            <form method="post" action="{{ url_for('cases.review', view=view) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="case_id" value="{{ case.id }}"><input type="hidden" name="action" value="escalate">
+              <button class="btn btn-sm btn-ghost review-normal-btn review-action-btn">Escalate</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('cases.review', view=view) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="case_id" value="{{ case.id }}"><input type="hidden" name="action" value="approve_close">
+              <button class="btn btn-sm btn-ghost review-normal-btn review-action-btn" data-confirm-danger="Close this active case?">Close</button>
+            </form>
+            {% else %}
+            <span class="muted">No primary action</span>
+            {% endif %}
+            {% if case.status in ['SUBMITTED_FOR_REVIEW', 'ASSIGNED', 'INVESTIGATING'] %}
+              <form method="post" action="{{ url_for('cases.review', view=view) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="case_id" value="{{ case.id }}"><input type="hidden" name="action" value="reopen">
+                <button class="btn btn-sm btn-ghost review-normal-btn review-action-btn" data-confirm-danger="Reopen this case and request more work?">Request More Work</button>
+              </form>
+            {% endif %}
+              <form method="post" action="{{ url_for('cases.review', view=view) }}" class="review-merge-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="case_id" value="{{ case.id }}"><input type="hidden" name="action" value="merge">
+                <input name="target_case_id" class="form-control form-control-sm" inputmode="numeric" placeholder="Target case ID" required>
+                <button class="btn btn-sm btn-ghost review-normal-btn review-action-btn" data-confirm-danger="Merge this case into the target case? This is advanced and cannot be quickly undone.">Merge</button>
+              </form>
+            </div>
+            {% else %}
+            <span class="badge status">View Only</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted">No cases waiting for review.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+<div class="triage-modal-backdrop" id="alertReasonModal">
+  <div class="triage-modal">
+    <i data-lucide="message-square-warning"></i>
+    <h2>Reason required</h2>
+    <p data-alert-reason-prompt>Add a concise review reason before continuing.</p>
+    <textarea class="form-control" rows="4" id="alertReasonText" placeholder="Write a short reason"></textarea>
+    <div class="actions profile-actions">
+      <button class="btn btn-ghost" type="button" data-alert-reason-cancel>Cancel</button>
+      <button class="btn btn-primary" type="button" data-alert-reason-submit>Continue</button>
+    </div>
+  </div>
+</div>
+<div class="profile-modal-backdrop" id="profileModalBackdrop">
+  {% for user in users %}
+  <div class="profile-popover" id="profile-card-{{ user.id }}" role="dialog" aria-modal="true">
+    <button class="profile-modal-close" type="button" data-close-profile><i data-lucide="x"></i></button>
+    <button class="profile-modal-avatar" type="button" data-image-preview="{{ url_for('profile.profile_picture', filename=user.profile_picture) if user.profile_picture else '' }}">
+      {% if user.profile_picture %}
+      <img src="{{ url_for('profile.profile_picture', filename=user.profile_picture) }}" alt="{{ user.full_name }}">
+      {% else %}{{ user.full_name[:1] }}{% endif %}
+    </button>
+    <b class="profile-modal-name role-{{ user.role|lower|replace(' ', '-') }}">
+      {% set role_meta = role_styles.get(user.role) %}
+      {{ user.full_name }}
+      {% if role_meta and role_meta.icon %}<span class="role-inline-icon" title="{{ user.role }}"><img src="{{ url_for('users.role_icon', filename=role_meta.icon) }}" alt="{{ user.role }}"></span>{% endif %}
+    </b>
+    <span class="role-badge role-{{ user.role|lower|replace(' ', '-') }}">{{ user.role }}</span>
+    <small>{{ user.email }}</small>
+    {% if user.phone %}<small>{{ user.phone }}</small>{% endif %}
+    {% if user.job_title or user.department %}<small>{{ user.job_title }}{% if user.department %} / {{ user.department }}{% endif %}</small>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

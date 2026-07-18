@@ -1,0 +1,45 @@
+# AstoraSOC runtime secrets
+.env
+.env.*
+!.env.example
+
+# Databases and local volumes
+*.db
+*.sqlite
+*.sqlite3
+instance/
+mysql_data/
+postgres_data/
+
+# Runtime uploads, evidence, generated reports, and backups
+app/uploads/*
+!app/uploads/.gitkeep
+/uploads/
+/evidence/
+/reports/
+/backups/
+*.zip
+
+# Logs and temporary output
+*.log
+logs/
+tmp/
+temp/
+
+# Python cache and tooling state
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local editor/OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Rendered documentation scratch output
+docs/rendered*/
+docs/media/

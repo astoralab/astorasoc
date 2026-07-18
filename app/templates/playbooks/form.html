@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Edit Playbook - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Edit Playbook</h1><p>{{ template.name }}</p></div>
+  <a class="btn btn-ghost" href="{{ url_for('playbooks.playbooks') }}"><i data-lucide="arrow-left"></i>Back</a>
+</div>
+
+<section class="glass panel">
+  <form method="post" class="form-grid" data-playbook-form>
+    {{ form.hidden_tag() }}
+    <div>{{ form.name.label(class="form-label") }}{{ form.name(class="form-control", data_preview_name="true") }}</div>
+    <div>{{ form.category.label(class="form-label") }}{{ form.category(class="form-select", data_preview_category="true") }}</div>
+    <div>{{ form.match_type.label(class="form-label") }}{{ form.match_type(class="form-select", data_playbook_match_type="true") }}</div>
+    <div data-match-wrap>
+      {{ form.match_value.label(class="form-label") }}
+      {{ form.match_value(class="form-control", data_match_value="true", data_preview_value="true") }}
+      <select class="form-select hidden" data-match-case>
+        {% for value, label in case_type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+      <select class="form-select hidden" data-match-mitre>
+        {% for value, label in mitre_tactic_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+      <p class="field-hint" data-match-hint>Generic fallback does not need a value.</p>
+    </div>
+    <div>{{ form.priority.label(class="form-label") }}{{ form.priority(class="form-control", data_preview_priority="true") }}</div>
+    <div class="span-2">{{ form.description.label(class="form-label") }}{{ form.description(class="form-control", rows=2, data_preview_description="true") }}</div>
+    <div class="span-2">{{ form.tasks_text.label(class="form-label") }}{{ form.tasks_text(class="form-control monospace-input", rows=12, data_preview_tasks="true") }}</div>
+    <label class="checkline">{{ form.is_active() }} Active</label>
+    <button class="btn btn-primary"><i data-lucide="save"></i>Save Playbook</button>
+  </form>
+</section>
+
+<section class="glass panel">
+  <div class="section-head compact-head">
+    <div><h2>Preview</h2><p>Current matching and reporting behavior.</p></div>
+    <span class="badge neutral-badge">v{{ template.version or 1 }}</span>
+  </div>
+  <article class="playbook-preview-card">
+    <div class="playbook-card-head">
+      <div>
+        <span class="badge category-badge" data-preview-category>{{ template.category or 'Generic' }}</span>
+        <h3 data-preview-name>{{ template.name }}</h3>
+        <p data-preview-description>{{ template.description or 'No description recorded.' }}</p>
+      </div>
+      <span class="badge {{ 'status' if template.is_active else 'muted-badge' }}">{{ 'Active' if template.is_active else 'Inactive' }}</span>
+    </div>
+    <div class="playbook-match-grid compact">
+      <span>Match <b data-preview-match>{{ match_labels.get(template.match_type, template.match_type) }}</b></span>
+      <span>Value <b data-preview-value>{{ template.match_value }}</b></span>
+      <span>Priority <b data-preview-priority>{{ template.priority }}</b></span>
+      <span>Steps <b data-preview-step-count>{{ playbook_steps(template)|length }}</b></span>
+    </div>
+    <ol class="playbook-step-list" data-preview-step-list>
+      {% for step in playbook_steps(template)[:8] %}<li>{{ step }}</li>{% endfor %}
+    </ol>
+  </article>
+</section>
+
+{% if template_history %}
+<section class="glass panel">
+  <div class="section-head compact-head">
+    <div><h2>Version History</h2><p>Recent saved snapshots for audit review.</p></div>
+    <span class="badge neutral-badge">{{ template_history|length }}</span>
+  </div>
+  <div class="playbook-history-list">
+    {% for item in template_history %}
+    <div>
+      <b>v{{ item.version }}</b>
+      <span>{{ item.name }}</span>
+      <small>{{ item.category }} / {{ match_labels.get(item.match_type, item.match_type) }} / {{ item.match_value }}</small>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

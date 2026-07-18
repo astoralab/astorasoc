@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - AstoraSOC{% endblock %}
+{% block content %}
+<div class="dashboard-screen soc-dashboard">
+  <div class="page-head dashboard-head">
+    <div>
+      <h1>Dashboard</h1>
+      <p>Incident response posture, investigation health, asset risk, IOC activity, and containment readiness.</p>
+    </div>
+    <div class="dashboard-head-actions">
+      <div class="period-switch" role="group" aria-label="Dashboard time range">
+        {% for key, meta in periods.items() %}
+        <button type="button" class="{% if key == active_period %}active{% endif %}" data-dashboard-period="{{ key }}">{{ meta[0] }}</button>
+        {% endfor %}
+      </div>
+      <details class="date-filter-menu">
+        <summary class="icon-btn" title="Filter by date" aria-label="Filter by date"><i data-lucide="calendar-days"></i></summary>
+        <form class="date-filter-popover" method="get" action="{{ url_for('dashboard.dashboard') }}" data-dashboard-calendar>
+          <input type="hidden" name="period" value="{{ active_period }}" data-dashboard-period-input>
+          <label>Date
+            <input class="form-control form-control-sm date-filter-input" type="text" name="date" value="{{ date_filter.date }}" placeholder="YYYY-MM-DD" inputmode="numeric" pattern="\d{4}-\d{2}-\d{2}" autocomplete="off">
+            <small>Use ISO date format, for example 2026-06-13.</small>
+          </label>
+          <div class="date-filter-actions"><button class="btn btn-sm btn-primary">Apply</button><a class="btn btn-sm btn-ghost" href="{{ url_for('dashboard.dashboard', period=active_period) }}">Clear</a></div>
+        </form>
+      </details>
+    </div>
+  </div>
+
+  <section class="soc-metric-grid">
+    {% for key, label, icon, tone in [
+      ('open_cases', 'Open Cases', 'folder-open', 'amber'),
+      ('pending_review', 'Pending Review', 'clipboard-check', 'amber'),
+      ('assigned', 'Assigned', 'user-check', 'blue'),
+      ('investigating', 'Investigating', 'search-code', 'purple'),
+      ('closed', 'Closed Cases', 'check-circle-2', 'green'),
+      ('false_positive', 'False Positives', 'ban', 'slate'),
+      ('mttd', 'MTTD', 'timer-reset', 'blue'),
+      ('mttr', 'MTTR', 'timer', 'orange')
+    ] %}
+    {% set card = analytics.cards[key] %}
+    <article class="glass soc-metric soc-metric-{{ tone }}">
+      <div><i data-lucide="{{ icon }}"></i><span>{{ label }}</span></div>
+      <strong data-dashboard-card="{{ key }}">{{ card.value }}</strong>
+      <small class="trend trend-{{ card.trend.direction }}" data-dashboard-trend="{{ key }}">{{ card.trend.value }}</small>
+    </article>
+    {% endfor %}
+  </section>
+
+  <section class="dashboard-command-grid">
+    <div class="glass dashboard-analytics soc-chart-zone">
+      <div class="section-head compact-head">
+        <div><h2>Case Analytics</h2><p><span data-dashboard-period-label>{{ analytics.period_label }}</span> incident distribution.</p></div>
+        <span class="badge status" data-dashboard-case-total>{{ analytics.case_total }} cases</span>
+      </div>
+      <div class="analytics-grid">
+        <div class="chart-panel">
+          <h3>Case Severity Distribution</h3>
+          <div id="severityChart" class="chart-box"></div>
+        </div>
+        <div class="chart-panel">
+          <h3>Case Status Distribution</h3>
+          <div id="statusChart" class="chart-box"></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="glass incident-activity-panel">
+      <div class="section-head compact-head">
+        <div><h2>Recent Incident Activity</h2><p>Case, review, containment, and closure events.</p></div>
+      </div>
+      <div class="incident-feed" data-dashboard-activity>
+        {% for item in analytics.activity %}
+        <article class="incident-feed-item severity-{{ item.severity|lower }}">
+          <b>{{ item.kind }}</b>
+          <span>{{ item.case }} {{ item.description }}</span>
+          <small>{{ item.status }} / {{ item.time }}</small>
+        </article>
+        {% else %}<p class="muted">No incident activity in this period.</p>{% endfor %}
+      </div>
+    </aside>
+  </section>
+
+  <section class="soc-intel-grid">
+    <div class="glass soc-panel asset-kpi-panel">
+      <div class="section-head compact-head"><div><h2>Asset Intelligence</h2><p>Inventory risk and investigation linkage.</p></div></div>
+      <div class="asset-dashboard-kpis">
+        <span>Total Assets <b data-dashboard-asset="total_assets">{{ analytics.assets.total_assets }}</b></span>
+        <span>Critical Assets <b data-dashboard-asset="critical_assets">{{ analytics.assets.critical_assets }}</b></span>
+        <span>High Risk Assets <b data-dashboard-asset="high_risk_assets">{{ analytics.assets.high_risk_assets }}</b></span>
+        <span>With Open Cases <b data-dashboard-asset="assets_with_open_cases">{{ analytics.assets.assets_with_open_cases }}</b></span>
+        <span>With Active Alerts <b data-dashboard-asset="assets_with_active_alerts">{{ analytics.assets.assets_with_active_alerts }}</b></span>
+      </div>
+    </div>
+    <div class="glass soc-panel">
+      <div class="section-head compact-head"><div><h2>Top Triggered Rules</h2><p>Highest-volume detections by source.</p></div></div>
+      <div class="soc-table-list detection-table" data-dashboard-list="top_rules">
+        <div class="soc-table-head detection-row"><span>Detection Name</span><span>Source</span><span>Count</span></div>
+        {% for row in analytics.top_rules %}
+        <div class="soc-table-row detection-row" title="{{ row.detection }}{% if row.rule_id %} / Rule ID {{ row.rule_id }}{% endif %}">
+          <a href="{{ row.alerts_url }}"><b>{{ row.detection }}</b></a>
+          <span class="source-pill source-{{ row.source|lower|replace(' ', '-') }}">{{ row.source }}</span>
+          <a class="mini-count" href="{{ row.cases_url }}" title="Open related cases">{{ row.count }}</a>
+        </div>
+        {% else %}<p class="muted">No rule activity.</p>{% endfor %}
+      </div>
+    </div>
+    <div class="glass soc-panel">
+      <div class="section-head compact-head"><div><h2>Most Affected Assets</h2><p>Linked assets with case impact.</p></div></div>
+      <div class="soc-table-list asset-impact-table" data-dashboard-list="affected_assets">
+        <div class="soc-table-head asset-impact-row"><span>Asset Name</span><span>Criticality</span><span>Open Alerts</span><span>Open Cases</span><span>Risk Score</span></div>
+        {% for row in analytics.affected_assets %}
+        <div class="soc-table-row asset-impact-row" title="{{ row.name }}">
+          <a href="{{ row.asset_url }}"><b>{{ row.name }}</b></a>
+          <span class="asset-criticality-pill asset-criticality-{{ row.criticality|lower }}">{{ row.criticality }}</span>
+          <a class="mini-count" href="{{ row.alerts_url }}">{{ row.open_alerts }} alert{{ '' if row.open_alerts == 1 else 's' }}</a>
+          <a class="mini-count" href="{{ row.cases_url }}">{{ row.open_cases }} case{{ '' if row.open_cases == 1 else 's' }}</a>
+          <em class="asset-risk-pill asset-risk-{{ row.risk_tone }}">{{ row.risk_score }}/100 {{ row.risk_label }}</em>
+        </div>
+        {% else %}<p class="muted">No linked asset impact.</p>{% endfor %}
+      </div>
+    </div>
+    <div class="glass soc-panel">
+      <div class="section-head compact-head"><div><h2>Analyst Workload</h2><p>Open cases by owner.</p></div></div>
+      <div class="soc-table-list workload-table" data-dashboard-list="workload">
+        <div class="soc-table-head workload-row"><span>Analyst Name</span><span>Assigned</span><span>Investigating</span><span>Pending Review</span></div>
+        {% for row in analytics.workload %}
+        <a class="soc-table-row workload-row" href="{{ row.cases_url }}" title="{{ row.name }}">
+          <b>{{ row.name }}</b>
+          <span class="mini-count">{{ row.assigned }} Assigned</span>
+          <span class="mini-count purple">{{ row.investigating }} Investigating</span>
+          <span class="mini-count amber">{{ row.pending_review }} Pending Review</span>
+        </a>
+        {% else %}<p class="muted">No assigned open cases.</p>{% endfor %}
+      </div>
+    </div>
+    <div class="glass soc-panel ioc-overview-panel">
+      <div class="section-head compact-head"><div><h2>IOC Intelligence</h2><p>Indicator volume and confidence.</p></div></div>
+      <div class="ioc-kpi-grid">
+        <span>Total <b data-dashboard-ioc="total">{{ analytics.iocs.total }}</b></span>
+        <span>High Confidence <b data-dashboard-ioc="high_confidence">{{ analytics.iocs.high_confidence }}</b></span>
+        <span>Linked To Cases <b data-dashboard-ioc="linked_to_cases">{{ analytics.iocs.linked_to_cases }}</b></span>
+      </div>
+      <div class="soc-list compact-soc-list" data-dashboard-list="ioc_types">
+        {% for row in analytics.iocs.by_type %}<span><b>{{ row.label }}</b><em>{{ row.value }}</em></span>{% else %}<p class="muted">No IOC activity.</p>{% endfor %}
+      </div>
+    </div>
+    <div class="glass soc-panel containment-overview-panel">
+      <div class="section-head compact-head"><div><h2>Containment Queue</h2><p>Approval and execution readiness.</p></div></div>
+      <div class="containment-kpi-grid">
+        {% for key, label in [('pending','Pending'),('approved','Approved'),('executed','Executed'),('failed','Failed'),('rolled_back','Rolled Back')] %}
+        <span class="containment-kpi-{{ key }}">{{ label }} <b data-dashboard-containment="{{ key }}">{{ analytics.containment[key] }}</b></span>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script>
+  window.RavenAnalytics = {
+    endpoint: "{{ url_for('dashboard.threat_analytics') }}",
+    initialPeriod: "{{ active_period }}",
+    date: "{{ date_filter.date }}"
+  };
+</script>
+{% endblock %}

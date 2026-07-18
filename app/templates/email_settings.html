@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Email Settings - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Email Settings</h1><p>SMTP delivery, notification preferences, profile email approvals, and delivery history.</p></div>
+</div>
+
+<form method="post" class="glass form-grid" autocomplete="off">
+  {{ form.hidden_tag() }}
+  {% if form.errors %}
+  <div class="span-2 form-errors">
+    {% for field, errors in form.errors.items() %}
+      {% for error in errors %}<p>{{ field|replace('_', ' ')|title }}: {{ error }}</p>{% endfor %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  <section class="span-2 settings-card">
+    <div class="settings-card-head">
+      <div><h2>SMTP Configuration</h2><p>Used for AstoraSOC workflow email notifications.</p></div>
+      <span class="badge status status-{{ 'closed' if config.smtp_host and config.from_email else 'submitted-for-review' }}">{{ 'Configured' if config.smtp_host and config.from_email else 'Incomplete' }}</span>
+    </div>
+    <div class="form-grid">
+      <div>{{ form.smtp_host.label(class="form-label") }}{{ form.smtp_host(class="form-control", placeholder="smtp.example.com") }}</div>
+      <div>{{ form.smtp_port.label(class="form-label") }}{{ form.smtp_port(class="form-control", placeholder="587") }}</div>
+      <div>{{ form.smtp_username.label(class="form-label") }}{{ form.smtp_username(class="form-control", placeholder="smtp user") }}</div>
+      <div>{{ form.smtp_password.label(class="form-label") }}{{ form.smtp_password(class="form-control", placeholder="Leave blank to keep current password") }}</div>
+      <label class="toggle-row">{{ form.use_tls(class="form-check-input") }}<span>Use STARTTLS</span></label>
+      <label class="toggle-row">{{ form.use_ssl(class="form-check-input") }}<span>Use SSL</span></label>
+      <div>{{ form.from_name.label(class="form-label") }}{{ form.from_name(class="form-control", placeholder="AstoraSOC") }}</div>
+      <div>{{ form.from_email.label(class="form-label") }}{{ form.from_email(class="form-control", placeholder="raven@example.com") }}</div>
+      <div class="span-2">{{ form.test_email.label(class="form-label") }}{{ form.test_email(class="form-control", placeholder=current_user.email) }}</div>
+    </div>
+    <div class="actions mt-3">
+      <button class="btn btn-primary" name="action" value="save"><i data-lucide="save"></i>Save Settings</button>
+      <button class="btn btn-ghost" name="action" value="test"><i data-lucide="send"></i>Send Test Email</button>
+    </div>
+  </section>
+</form>
+
+<section class="glass settings-card mt-3">
+  <div class="settings-card-head">
+    <div><h2>Pending Profile Email Changes</h2><p>Profile email changes require administrator approval before delivery uses the new address.</p></div>
+    <span class="badge status">{{ pending_users|length }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-dark align-middle">
+      <thead><tr><th>User</th><th>Current Email</th><th>Pending Email</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for user in pending_users %}
+      <tr>
+        <td>{{ user.full_name }}<small class="muted d-block">{{ user.role }}</small></td>
+        <td>{{ user.email }}</td>
+        <td>{{ user.pending_email }}</td>
+        <td class="actions">
+          <form method="post" action="{{ url_for('settings.approve_profile_email', user_id=user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-primary">Approve</button></form>
+          <form method="post" action="{{ url_for('settings.reject_profile_email', user_id=user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-ghost">Reject</button></form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No pending profile email changes.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="glass settings-card mt-3">
+  <div class="settings-card-head">
+    <div><h2>Email Delivery Logs</h2><p>Recent notification delivery history and SMTP errors.</p></div>
+    <span class="badge status">{{ logs|length }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-dark align-middle">
+      <thead><tr><th>Time</th><th>Recipient</th><th>Type</th><th>Subject</th><th>Status</th><th>Error</th></tr></thead>
+      <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ format_short_datetime(log.created_at) }}</td>
+        <td>{{ log.recipient_email }}</td>
+        <td>{{ log.notification_type|replace('_', ' ')|title }}</td>
+        <td>{{ log.subject }}</td>
+        <td><span class="badge status status-{{ 'closed' if log.status == 'SENT' else 'false-positive' if log.status == 'FAILED' else 'submitted-for-review' }}">{{ log.status }}</span></td>
+        <td>{{ log.error or '-' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No email delivery records yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

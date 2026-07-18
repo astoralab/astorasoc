@@ -1,0 +1,30 @@
+{% set accent = accent|default('info') %}
+{% set actions = actions|default([]) %}
+<section class="error-stage error-{{ accent }}">
+  <div class="error-orb" aria-hidden="true">
+    <span class="error-orb-ring"></span>
+    <span class="error-orb-core">{{ code }}</span>
+    <span class="error-orb-scan"></span>
+  </div>
+  <div class="error-panel">
+    <span class="error-kicker">{{ kicker|default('AstoraSOC System Notice') }}</span>
+    <h1>{{ heading }}</h1>
+    <p>{{ message }}</p>
+    {% if hint %}
+    <div class="error-hint">
+      <i data-lucide="{{ hint_icon|default('radar') }}"></i>
+      <span>{{ hint }}</span>
+    </div>
+    {% endif %}
+    <div class="error-actions">
+      {% if current_user.is_authenticated %}
+      <a class="btn btn-primary" href="{{ url_for('dashboard.dashboard') }}"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+      {% else %}
+      <a class="btn btn-primary" href="{{ url_for('auth.login') }}"><i data-lucide="log-in"></i> Sign in</a>
+      {% endif %}
+      <button class="btn btn-ghost" type="button" onclick="history.length > 1 ? history.back() : window.location.assign('{{ url_for('dashboard.dashboard') if current_user.is_authenticated else url_for('auth.login') }}')">
+        <i data-lucide="arrow-left"></i> Go back
+      </button>
+    </div>
+  </div>
+</section>

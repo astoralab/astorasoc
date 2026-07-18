@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% from "assets/_asset_badge.html" import asset_badge %}
+{% block title %}Alerts - AstoraSOC{% endblock %}
+{% block content %}
+{% macro field_value(value) -%}{{ value if value not in (none, '') else 'Not Available' }}{%- endmacro %}
+<div class="page-head">
+  <div>
+    <h1>Alerts</h1>
+    <p>Triage SIEM detections and route verified items to Lead review.</p>
+  </div>
+  <div class="actions alert-filter-actions">
+    {% for value, label in [('', 'All'), ('NEW', 'Pending'), ('PROMOTED', 'Promoted'), ('FALSE_POSITIVE', 'False Positive')] %}
+    <a class="btn btn-ghost {% if status == value %}active{% endif %}" href="{{ url_for('alerts.alerts', status=value, date=date_filter.date) }}">{{ label }}</a>
+    {% endfor %}
+    <details class="date-filter-menu">
+      <summary class="icon-btn" title="Filter by date" aria-label="Filter by date"><i data-lucide="calendar-days"></i></summary>
+      <form class="date-filter-popover" method="get" action="{{ url_for('alerts.alerts') }}">
+        <input type="hidden" name="status" value="{{ status or '' }}">
+        <label>Date<input class="form-control form-control-sm" type="date" name="date" value="{{ date_filter.date }}"></label>
+        <div class="date-filter-actions"><button class="btn btn-sm btn-primary">Apply</button><a class="btn btn-sm btn-ghost" href="{{ url_for('alerts.alerts', status=status or '') }}">Clear</a></div>
+      </form>
+    </details>
+  </div>
+</div>
+<div class="alert-board">
+  {% for alert in alerts %}
+  {% set ctx = alert_context.get(alert.id, {}) %}
+  {% set raw = alert.raw_json if alert.raw_json is mapping else {} %}
+  {% set event = raw.get('event', {}) if raw.get('event') is mapping else {} %}
+  {% set alert_time = format_short_datetime(ctx.get('event_timestamp') or event.get('timestamp') or raw.get('timestamp') or alert.created_at) %}
+  <article class="alert-card alert-card-{{ alert.severity|lower }}" data-alert-row="{{ alert.id }}">
+    <div class="alert-card-main">
+      <div class="alert-field alert-time-field">
+        <span>Time</span>
+        <b>{{ alert_time }}</b>
+      </div>
+      <div class="alert-field">
+        <span>Source</span>
+        <b class="source-pill source-{{ (ctx.get('source') or alert.source or 'custom')|lower|replace(' ', '-') }}">{{ ctx.get('source') or alert.source or 'Custom' }}</b>
+      </div>
+      <div class="alert-field">
+        <span>Severity</span>
+        <b class="severity-pill sev-{{ alert.severity|lower }}">{{ alert.severity }}</b>
+      </div>
+      <div class="alert-field alert-asset-field">
+        <span>Asset Impact</span>
+        {{ asset_badge(alert.asset, true) }}
+      </div>
+      <div class="alert-field">
+        <span>Detection Name</span>
+        <b>{{ ctx.get('detection_name') or alert.title }}</b>
+      </div>
+      {% if ctx.get('rule_id') %}
+      <div class="alert-field">
+        <span>Rule ID</span>
+        <b>{{ ctx.get('rule_id') }}</b>
+      </div>
+      {% endif %}
+      {% if ctx.get('host') %}
+      <div class="alert-field">
+        <span>Agent/Host</span>
+        <b>{{ ctx.get('host') }}</b>
+      </div>
+      {% endif %}
+      {% if ctx.get('source_ip') %}
+      <div class="alert-field">
+        <span>Source IP</span>
+        <b>{{ ctx.get('source_ip') }}</b>
+      </div>
+      {% endif %}
+      {% if ctx.get('username') %}
+      <div class="alert-field">
+        <span>Username</span>
+        <b>{{ ctx.get('username') }}</b>
+      </div>
+      {% endif %}
+      {% if ctx.get('mitre_technique') %}
+      <div class="alert-field">
+        <span>MITRE Technique</span>
+        <b>{{ ctx.get('mitre_technique') }}</b>
+      </div>
+      {% endif %}
+    </div>
+    <div class="alert-card-foot">
+      <div class="alert-card-actions">
+        <details class="alert-details" data-alert-detail="{{ alert.id }}">
+          <summary class="btn btn-sm btn-ghost">Details</summary>
+          <div class="alert-details-panel">
+            <div class="alert-detail-head">
+              <div>
+                <span class="eyebrow">{{ tracking_label(alert) }} / {{ ctx.get('source') or alert.source or 'SIEM' }} triage</span>
+                <h2>{{ alert.title }}</h2>
+              </div>
+              <div class="alert-badges">
+                <span class="severity-pill sev-{{ alert.severity|lower }}">{{ alert.severity }}</span>
+                {% if alert.asset %}<span class="asset-criticality-pill asset-criticality-{{ alert.asset.criticality|lower }}">{{ alert.asset.criticality }} Asset</span>{% endif %}
+                <span class="badge status status-{{ alert.status|lower|replace('_', '-') }}" data-alert-status="{{ alert.id }}">{{ status_label(alert.status) }}</span>
+              </div>
+            </div>
+            <div class="alert-tabs" role="tablist" aria-label="Alert detail sections">
+              {% for key, label in [('overview', 'Overview'), ('full-log', 'Full Log'), ('raw-json', 'Raw JSON'), ('mitre', 'MITRE'), ('network', 'Network'), ('iocs', 'IOCs')] %}
+              <button class="{% if loop.first %}active{% endif %}" type="button" data-alert-tab="{{ alert.id }}-{{ key }}">{{ label }}</button>
+              {% endfor %}
+            </div>
+            <section class="alert-tab-panel active" id="alert-panel-{{ alert.id }}-overview" data-alert-panel="{{ alert.id }}-overview">
+              <div class="alert-detail-grid">
+                <div class="copy-field"><span>Status</span><b data-alert-status-text="{{ alert.id }}">{{ status_label(alert.status) }}</b></div>
+                <div class="copy-field"><span>Tracking ID</span><b>{{ tracking_label(alert) }}</b><button type="button" data-copy-target="#tracking-{{ alert.id }}"><i data-lucide="copy"></i></button><small id="tracking-{{ alert.id }}">{{ tracking_label(alert) }}</small></div>
+                <div class="copy-field"><span>Severity</span><b class="severity-pill sev-{{ alert.severity|lower }}">{{ alert.severity }}</b></div>
+                <div class="copy-field asset-detail-field"><span>Linked Asset</span>{{ asset_badge(alert.asset) }}</div>
+                <div class="copy-field"><span>Detection Name</span><b>{{ ctx.get('detection_name') or alert.title }}</b></div>
+                {% if ctx.get('rule_id') %}<div class="copy-field"><span>Rule ID</span><b>{{ ctx.get('rule_id') }}</b><button type="button" data-copy-target="#rule-{{ alert.id }}"><i data-lucide="copy"></i></button><small id="rule-{{ alert.id }}">{{ ctx.get('rule_id') }}</small></div>{% endif %}
+                {% if ctx.get('host') %}<div class="copy-field"><span>Host</span><b>{{ ctx.get('host') }}</b><button type="button" data-copy-target="#host-{{ alert.id }}"><i data-lucide="copy"></i></button><small id="host-{{ alert.id }}">{{ ctx.get('host') }}</small></div>{% endif %}
+              </div>
+              <div class="alert-description">
+                <span>Description</span>
+                <p>{{ alert.description or 'Not Available' }}</p>
+              </div>
+              {% if alert.status in ['NEW', 'Pending Review', 'New'] and role_allows(current_user.role, 'Lead', 'Junior Analyst') %}
+              <form method="post" class="alert-note-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="alert_id" value="{{ alert.id }}">
+                <input type="hidden" name="action" value="task_plan">
+                <label class="form-label" for="note-{{ alert.id }}">Analyst note</label>
+                <textarea id="note-{{ alert.id }}" name="task_plan" class="form-control" rows="2" placeholder="Short triage note or recommended next action">{{ alert.task_plan or '' }}</textarea>
+                <button class="btn btn-sm btn-ghost">Save Note</button>
+              </form>
+              {% endif %}
+              <div class="alert-history">
+                <span>Local action history</span>
+                <ol data-alert-history="{{ alert.id }}">
+                  <li data-local-view hidden><b>Viewed</b><small>just now</small></li>
+                  {% for row in ctx.get('history', []) %}
+                  <li><b>{{ row.action|replace('alert_', '')|replace('_', ' ')|title }}</b><small>{{ format_short_datetime(row.created_at) }}{% if row.actor %} / {{ row.actor.username }}{% endif %}</small></li>
+                  {% else %}
+                  <li><b>No saved actions yet</b><small>Open details to begin triage.</small></li>
+                  {% endfor %}
+                </ol>
+              </div>
+            </section>
+            <section class="alert-tab-panel" id="alert-panel-{{ alert.id }}-full-log" data-alert-panel="{{ alert.id }}-full-log">
+              <div class="panel-title-row"><span>Full log</span><button type="button" class="icon-btn" title="Copy full log" data-copy-target="#full-log-{{ alert.id }}"><i data-lucide="copy"></i></button></div>
+              <pre id="full-log-{{ alert.id }}" class="alert-log-block">{{ ctx.get('full_log') }}</pre>
+            </section>
+            <section class="alert-tab-panel" id="alert-panel-{{ alert.id }}-raw-json" data-alert-panel="{{ alert.id }}-raw-json">
+              <div class="panel-title-row"><span>Raw JSON</span><button type="button" class="icon-btn" title="Copy raw JSON" data-copy-target="#raw-json-{{ alert.id }}"><i data-lucide="copy"></i></button></div>
+              <pre id="raw-json-{{ alert.id }}" class="alert-log-block">{{ ctx.get('raw_json') }}</pre>
+              {% if role_allows(current_user.role, 'Admin') %}
+              <details class="normalized-debug">
+                <summary>Normalized field debug</summary>
+                <pre class="alert-log-block">{{ ctx.get('normalized')|tojson(indent=2) }}</pre>
+              </details>
+              {% endif %}
+            </section>
+            <section class="alert-tab-panel" id="alert-panel-{{ alert.id }}-mitre" data-alert-panel="{{ alert.id }}-mitre">
+              <div class="alert-detail-grid">
+                <div class="copy-field"><span>Tactic</span><b>{{ ctx.get('mitre_tactics', [])|join(', ') or ctx.get('mitre_tactic') or 'Not Available' }}</b></div>
+                <div class="copy-field"><span>Technique</span><b>{{ ctx.get('mitre_techniques', [])|join(', ') or ctx.get('mitre_technique') or 'Not Available' }}</b></div>
+                <div class="copy-field"><span>MITRE IDs</span><b>{{ ctx.get('mitre_ids', [])|join(', ') or 'Not Available' }}</b></div>
+              </div>
+            </section>
+            <section class="alert-tab-panel" id="alert-panel-{{ alert.id }}-network" data-alert-panel="{{ alert.id }}-network">
+              <div class="alert-detail-grid">
+                <div class="copy-field"><span>Source IP</span><b>{{ ctx.get('source_ip') or 'Not Available' }}</b>{% if ctx.get('source_ip') %}<button type="button" data-copy-target="#src-{{ alert.id }}"><i data-lucide="copy"></i></button><small id="src-{{ alert.id }}">{{ ctx.get('source_ip') }}</small>{% endif %}</div>
+                <div class="copy-field"><span>Destination IP</span><b>{{ ctx.get('destination_ip') or 'Not Available' }}</b>{% if ctx.get('destination_ip') %}<button type="button" data-copy-target="#dst-{{ alert.id }}"><i data-lucide="copy"></i></button><small id="dst-{{ alert.id }}">{{ ctx.get('destination_ip') }}</small>{% endif %}</div>
+                <div class="copy-field"><span>Username</span><b>{{ ctx.get('username') or 'Not Available' }}</b></div>
+                <div class="copy-field"><span>Host</span><b>{{ ctx.get('host') or 'Not Available' }}</b></div>
+              </div>
+            </section>
+            <section class="alert-tab-panel" id="alert-panel-{{ alert.id }}-iocs" data-alert-panel="{{ alert.id }}-iocs">
+              <div class="ioc-chip-list">
+                {% for ioc in ctx.get('stored_iocs', []) %}
+                {% set counts = ctx.get('ioc_counts', {}).get(ioc.id, {}) %}
+                {% set display_value = sanitize_ioc_value(ioc.type, ioc.value) %}
+                {% if display_value %}
+                <span class="ioc-chip ioc-{{ ioc_type_class(ioc.type) }}">
+                  <b>{{ ioc_type_label(ioc.type) }}</b>{{ display_value }}
+                  <small>{{ counts.get('occurrences', 1) }} seen / {{ ioc.confidence }}</small>
+                </span>
+                {% endif %}
+                {% else %}
+                {% for ioc in ctx.get('iocs', []) %}
+                {% set display_value = sanitize_ioc_value(ioc.type, ioc.value) %}
+                {% if display_value %}
+                <span class="ioc-chip ioc-{{ ioc_type_class(ioc.type) }}"><b>{{ ioc_type_label(ioc.type) }}</b>{{ display_value }}<small>{{ ioc.confidence }}</small></span>
+                {% endif %}
+                {% else %}
+                <span class="muted">No obvious IOCs extracted from this alert.</span>
+                {% endfor %}
+                {% endfor %}
+              </div>
+            </section>
+          </div>
+        </details>
+        {% if alert.status in ['NEW', 'Pending Review', 'New'] and role_allows(current_user.role, 'Lead', 'Junior Analyst') %}
+        <form method="post" class="alert-inline-action" data-alert-reason="Review comment required" data-alert-reason-label="Send for Review">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="alert_id" value="{{ alert.id }}">
+          <input type="hidden" name="action" value="submit_review">
+          <input type="hidden" name="reason" value="">
+          <button class="btn btn-sm btn-primary">Send for Review</button>
+        </form>
+        <form method="post" class="alert-inline-action" data-alert-reason="False positive reason required" data-alert-reason-label="False Positive">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="alert_id" value="{{ alert.id }}">
+          <input type="hidden" name="action" value="false_positive">
+          <input type="hidden" name="reason" value="">
+          <button class="btn btn-sm btn-ghost">False Positive</button>
+        </form>
+        {% elif alert.case_id %}
+        <a class="btn btn-sm btn-primary" href="{{ url_for('cases.case_detail', case_id=alert.case_id) }}">Open Case</a>
+        {% else %}
+        <span class="badge status status-{{ alert.status|lower|replace('_', '-') }}" data-alert-status="{{ alert.id }}">{{ status_label(alert.status) }}</span>
+        {% endif %}
+      </div>
+      <span class="alert-received">Received {{ relative_time(alert.created_at) }}</span>
+    </div>
+  </article>
+  {% else %}
+  <div class="glass"><p class="muted">No alerts in this view.</p></div>
+  {% endfor %}
+</div>
+{% if total > alerts|length or page > 1 %}
+<div class="alert-pager glass">
+  <span>Showing {{ ((page - 1) * page_size) + 1 if alerts else 0 }}-{{ ((page - 1) * page_size) + alerts|length }} of {{ total }}</span>
+  <div class="actions">
+    {% if has_prev %}<a class="btn btn-sm btn-ghost" href="{{ url_for('alerts.alerts', status=status, page=page - 1, ioc=request.args.get('ioc', ''), type=request.args.get('type', 'IP'), date=date_filter.date) }}">Previous</a>{% endif %}
+    {% if has_next %}<a class="btn btn-sm btn-primary" href="{{ url_for('alerts.alerts', status=status, page=page + 1, ioc=request.args.get('ioc', ''), type=request.args.get('type', 'IP'), date=date_filter.date) }}">Next</a>{% endif %}
+  </div>
+</div>
+{% endif %}
+<div class="triage-modal-backdrop" id="alertReasonModal">
+  <div class="triage-modal">
+    <i data-lucide="message-square-warning"></i>
+    <h2>Reason required</h2>
+    <p data-alert-reason-prompt>Add a concise triage comment before continuing.</p>
+    <textarea class="form-control" rows="4" id="alertReasonText" placeholder="Write a short reason or review comment"></textarea>
+    <div class="actions profile-actions">
+      <button class="btn btn-ghost" type="button" data-alert-reason-cancel>Cancel</button>
+      <button class="btn btn-primary" type="button" data-alert-reason-submit>Continue</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

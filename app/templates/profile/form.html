@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Edit Profile - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Edit Profile</h1><p>Update your public responder details.</p></div></div>
+<form method="post" enctype="multipart/form-data" class="glass form-grid" autocomplete="off">
+  {{ form.hidden_tag() }}
+  {% if form.errors %}
+  <div class="span-2 form-errors">
+    {% for field, errors in form.errors.items() %}
+      {% for error in errors %}<p>{{ field|replace('_', ' ')|title }}: {{ error }}</p>{% endfor %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div>{{ form.full_name.label(class="form-label") }}{{ form.full_name(class="form-control") }}</div>
+  <div>{{ form.email.label(class="form-label") }}{{ form.email(class="form-control") }}{% if current_user.pending_email %}<small class="muted">Pending approval: {{ current_user.pending_email }}</small>{% endif %}</div>
+  <div>{{ form.phone.label(class="form-label") }}{{ form.phone(class="form-control") }}</div>
+  <div>{{ form.department.label(class="form-label") }}{{ form.department(class="form-control") }}</div>
+  <div>{{ form.job_title.label(class="form-label") }}{{ form.job_title(class="form-control") }}</div>
+  <div>{{ form.organization.label(class="form-label") }}{{ form.organization(class="form-control") }}</div>
+  <div>
+    {{ form.profile_picture.label(class="form-label") }}
+    <label class="raven-file-control">
+      <span class="raven-file-action"><i data-lucide="image-up"></i>Choose photo</span>
+      <span class="raven-file-name" data-file-name>No new profile photo selected</span>
+      {{ form.profile_picture(class="raven-file-native") }}
+    </label>
+  </div>
+  <div class="span-2 actions">{{ form.submit(class="btn btn-primary") }}<a class="btn btn-ghost" href="{{ url_for('profile.profile') }}">Cancel</a></div>
+</form>
+{% endblock %}

@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Not Found - AstoraSOC{% endblock %}
+{% block body_class %}error-page-body{% endblock %}
+{% block content %}
+{% with code='404', accent='info', kicker='Navigation Drift', heading='Page not found', message='The page moved, was archived, or never existed in this workspace.', hint='Use the dashboard or go back to return to the active SOC workflow.', hint_icon='compass' %}
+  {% include "errors/_error_page.html" %}
+{% endwith %}
+{% endblock %}

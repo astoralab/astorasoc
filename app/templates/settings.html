@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Settings - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head settings-page-head">
+  <div><h1>Settings</h1><p>Webhook, reporting, session, and audit retention controls.</p></div>
+  <form method="post" action="{{ url_for('settings.update_system') }}" data-loading-message="Updating system" data-confirm-title="Update AstoraSOC?" data-confirm-text="Confirm Update" data-confirm-icon="download-cloud" data-confirm-danger="AstoraSOC will create a backup and then update the system. The application may restart during this process. Continue?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-primary" type="submit"><i data-lucide="download-cloud"></i>Update System</button>
+  </form>
+</div>
+<form method="post" enctype="multipart/form-data" class="glass form-grid" autocomplete="off">
+  {{ form.hidden_tag() }}
+  {% if form.errors %}
+  <div class="span-2 form-errors">
+    {% for field, errors in form.errors.items() %}
+      {% for error in errors %}<p>{{ field|replace('_', ' ')|title }}: {{ error }}</p>{% endfor %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if system_update_status %}
+  <section class="span-2 settings-card system-update-status is-{{ system_update_status.status }}">
+    <div class="settings-card-head">
+      <span class="settings-card-icon"><i data-lucide="{{ 'check-circle-2' if system_update_status.status == 'success' else 'terminal-square' if system_update_status.status == 'manual_required' else 'x-circle' }}"></i></span>
+      <div>
+        <h2>System Update Status</h2>
+        <p>{{ system_update_status.message }}</p>
+      </div>
+    </div>
+    <div class="system-update-meta">
+      {% if system_update_status.at %}<span><b>Checked</b>{{ system_update_status.at }}</span>{% endif %}
+      {% if system_update_status.backup %}<span><b>Backup</b>{{ system_update_status.backup }}</span>{% endif %}
+      {% if system_update_status.release %}<span><b>Release</b>{{ system_update_status.release }}</span>{% endif %}
+    </div>
+    {% if system_update_status.commands %}
+    <div class="system-update-commands">
+      <h3>Docker host commands</h3>
+      <p>Run these from the host that owns the AstoraSOC deployment after the backup is verified.</p>
+      <pre>{% for command in system_update_status.commands %}{{ command }}
+{% endfor %}</pre>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+  <section class="span-2 settings-asset-grid settings-report-grid">
+    <div class="settings-asset-card">
+      <div class="asset-preview report-preview">
+        <i data-lucide="file-text"></i>
+      </div>
+      <div>
+        {{ form.report_template.label(class="form-label") }}
+        <small>{% if report_template %}{{ report_template.name }}{% else %}Upload a .docx report template with placeholders{% endif %}</small>
+        <label class="raven-file-control">
+          <span class="raven-file-action"><i data-lucide="file-up"></i>Choose DOCX</span>
+          <span class="raven-file-name" data-file-name>No new template selected</span>
+          {{ form.report_template(class="raven-file-native", accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document") }}
+        </label>
+      </div>
+    </div>
+  </section>
+  <section class="span-2 settings-ops-grid">
+    <div class="settings-card webhook-key-card settings-compact-card">
+      <div class="settings-card-head">
+        <div>
+          <h2>Webhook API Key</h2>
+          <p>Use this key in the <code>X-API-Key</code> header for alert webhooks.</p>
+        </div>
+        <div class="secret-actions">
+          <button class="icon-btn" type="button" title="Show key" aria-label="Show key" data-toggle-secret="#webhookApiKeyDisplay"><i data-lucide="eye"></i></button>
+          <button class="icon-btn" type="button" title="Copy key" aria-label="Copy key" data-copy-secret="#webhookApiKeyDisplay"><i data-lucide="copy"></i></button>
+          <button class="icon-btn danger-icon" type="submit" form="webhookRegenerateForm" title="Regenerate key" aria-label="Regenerate key" data-confirm-danger="Regenerate webhook API key? The old key will stop working immediately."><i data-lucide="refresh-cw"></i></button>
+        </div>
+      </div>
+      <input class="form-control secret-field is-blurred" id="webhookApiKeyDisplay" type="password" value="{{ form.webhook_api_key.data }}" readonly autocomplete="off" spellcheck="false">
+    </div>
+    <div class="settings-card email-entry-card settings-compact-card">
+      <span class="settings-card-icon settings-card-icon-mail"><i data-lucide="mail"></i></span>
+      <div>
+        <h2>Email Settings</h2>
+        <p>SMTP delivery, test email, pending address approvals, and delivery logs.</p>
+        <a class="btn btn-sm btn-primary" href="{{ url_for('settings.email_settings') }}">Open Email Settings</a>
+      </div>
+    </div>
+  </section>
+  <section class="span-2 settings-session-row">
+    <div class="settings-card settings-session-card settings-compact-card">
+      <div>
+        {{ form.session_timeout_minutes.label(class="form-label") }}
+        <small>Automatic logout window for inactive sessions.</small>
+      </div>
+      {{ form.session_timeout_minutes(class="form-control") }}
+    </div>
+  </section>
+  <section class="span-2 settings-card ai-settings-card" data-ai-settings data-ai-models='{{ ai_provider_models|tojson }}' data-ai-requirements='{{ ai_provider_requirements|tojson }}'>
+    <div class="settings-card-head">
+      <span class="settings-card-icon"><i data-lucide="sparkles"></i></span>
+      <div>
+        <h2>AI Report Generation</h2>
+        <p>Enterprise report enhancement for closed cases after Lead approval. Standard reports remain available as automatic fallback.</p>
+      </div>
+    </div>
+    <div class="ai-config-shell">
+      <label class="ai-enable-card toggle-row">{{ form.ai_enabled(class="form-check-input") }}<span><b>Enable AI Report Generation</b><small>When enabled, Generate PDF/DOCX automatically uses AI for approved closed cases.</small></span></label>
+      <div class="ai-saved-summary">
+        <span class="{{ 'is-on' if ai_saved_enabled else 'is-off' }}">Saved: {{ ai_saved_status }}</span>
+        <span>Provider: {{ ai_current_provider_label }}</span>
+        <span>Model: {{ ai_current_model_label }}</span>
+        <span>Key: {{ ai_saved_key_status }}</span>
+      </div>
+      {% if ai_key_configured and not ai_saved_enabled %}
+      <p class="warning-text compact-warning">AI is configured but currently disabled. Turn on Enable AI Report Generation and click Save settings to let reports use AI.</p>
+      {% endif %}
+      <div class="ai-config-grid">
+        <div>
+          {{ form.ai_provider.label(class="form-label") }}
+          {{ form.ai_provider(class="form-select", data_ai_provider="1") }}
+          <small data-ai-selected-provider>Selected provider: {{ ai_current_provider_label }}</small>
+          <small>Saved provider changes after Save settings.</small>
+        </div>
+        <div>
+          {{ form.ai_model.label(class="form-label") }}
+          {{ form.ai_model(class="form-select", data_ai_model="1") }}
+          <small>Official paid APIs, free-tier routes, and local models are labeled clearly.</small>
+        </div>
+        <div>
+        {{ form.ai_api_key.label(class="form-label") }}
+          {{ form.ai_api_key(class="form-control", placeholder="Enter a new key to replace saved key" if ai_key_configured else "Paste API key", autocomplete="new-password", data_ai_api_key="1") }}
+          <small>{{ 'Secret is saved and encrypted. Existing key is never displayed.' if ai_key_configured else 'Stored encrypted after saving and never shown again.' }}</small>
+        </div>
+        <div data-ai-endpoint-wrap>
+          {{ form.ai_endpoint.label(class="form-label") }}
+          {{ form.ai_endpoint(class="form-control", placeholder="https://provider.example/v1/chat/completions", data_ai_endpoint="1") }}
+          <small data-ai-endpoint-help>Required for Azure OpenAI, Ollama, and custom OpenAI-compatible endpoints.</small>
+        </div>
+      </div>
+      <div class="ai-test-panel">
+        <button class="btn btn-ghost" type="button" data-ai-test-url="{{ url_for('settings.test_ai_settings') }}"><i data-lucide="plug-zap"></i>Test AI Connection</button>
+        <div class="ai-test-result" data-ai-test-result>
+          <span class="muted">Connection test validates authentication, endpoint reachability, model access, and latency.</span>
+        </div>
+      </div>
+    </div>
+    <p class="warning-text">Official OpenAI and Claude APIs are paid/low-cost. Free DeepSeek options are available through OpenRouter, and Ollama runs locally without an API key. AI reports are generated only for Closed cases with Lead approval.</p>
+  </section>
+  <details class="span-2 settings-card">
+    <summary>Audit Log Retention</summary>
+    <div class="form-grid">
+      <div>{{ form.login_logout_retention_days.label(class="form-label") }}{{ form.login_logout_retention_days(class="form-control") }}</div>
+      <div>{{ form.failed_login_retention_days.label(class="form-label") }}{{ form.failed_login_retention_days(class="form-control") }}</div>
+      <div>{{ form.case_admin_security_retention_days.label(class="form-label") }}{{ form.case_admin_security_retention_days(class="form-control") }}</div>
+      <div>{{ form.archive_retention_years.label(class="form-label") }}{{ form.archive_retention_years(class="form-control") }}</div>
+      <label class="toggle-row">{{ form.enable_auto_archive(class="form-check-input") }}<span>Enable auto archive</span></label>
+      <label class="toggle-row">{{ form.enable_auto_delete(class="form-check-input") }}<span>Enable auto delete</span></label>
+    </div>
+    <p class="warning-text">Logs are archived and verified before deletion. Manual deletion requires admin confirmation.</p>
+  </details>
+  <div class="span-2">{{ form.submit(class="btn btn-primary") }}</div>
+</form>
+<form id="webhookRegenerateForm" method="post" action="{{ url_for('settings.regenerate_webhook_key') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endblock %}

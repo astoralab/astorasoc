@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% from "assets/_os_badge.html" import os_badge %}
+{% block title %}Assets - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head asset-page-head">
+  <div><h1>Assets</h1><p>Security asset intelligence for investigations, alerts, cases, and reporting.</p></div>
+  <div class="actions page-head-actions asset-head-actions">
+    <span class="asset-header-control asset-count-control" title="Visible assets in the current inventory view" aria-label="Visible assets">
+      <i data-lucide="server"></i>
+      <b data-asset-visible-count>{{ assets|length }}</b>
+    </span>
+    {% if role_allows(current_user.role, 'Admin') %}<a class="btn btn-primary icon-btn asset-header-control" href="{{ url_for('assets.new_asset') }}" title="New Asset" aria-label="New Asset"><i data-lucide="plus"></i></a>{% endif %}
+    <a class="btn btn-ghost icon-btn asset-header-control" href="{{ url_for('assets.download_assets') }}" title="Download asset details" aria-label="Download asset details"><i data-lucide="download"></i></a>
+  </div>
+</div>
+
+<section class="glass asset-filter-panel">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="asset-filter-bar" data-asset-filter-bar>
+    <input class="form-control asset-filter-search" value="" placeholder="Search assets, hostname, IP, owner, department" data-asset-filter="search">
+    <select class="form-select" data-asset-filter="criticality"><option value="">All criticality</option>{% for item in filter_options.criticality %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select>
+    <select class="form-select" data-asset-filter="status"><option value="">All status</option>{% for item in filter_options.status %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select>
+    <select class="form-select" data-asset-filter="asset_type"><option value="">All types</option>{% for item in filter_options.asset_type %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select>
+    <select class="form-select" data-asset-filter="department"><option value="">All departments</option>{% for item in filter_options.department %}<option value="{{ item.value }}">{{ item.label }}</option>{% endfor %}</select>
+    <select class="form-select" data-asset-filter="os"><option value="">All OS</option>{% for item in filter_options.os %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select>
+  </div>
+</section>
+
+<div class="glass asset-table-wrap">
+  <div class="table-responsive">
+    <table class="table table-dark table-hover align-middle asset-table asset-intel-table">
+      <thead><tr><th>Asset Name</th><th>Criticality</th><th>IP Address</th><th>Asset Owner</th><th>Department</th><th>Operating System</th><th>Status</th><th>Risk</th><th>Linked Alerts</th><th>Linked Cases</th>{% if role_allows(current_user.role, 'Admin') %}<th>Actions</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for asset in assets %}
+      {% set risk = asset_risk_score(asset) %}
+      <tr data-asset-row
+        data-search="{{ ((asset.asset_name or '') ~ ' ' ~ (asset.hostname or '') ~ ' ' ~ (asset.ip_address or '') ~ ' ' ~ (asset.owner or '') ~ ' ' ~ (asset.department or '') ~ ' ' ~ (asset.operating_system or '') ~ ' ' ~ (asset.asset_type or ''))|lower }}"
+        data-criticality="{{ asset.criticality }}"
+        data-status="{{ asset.status or 'Unknown' }}"
+        data-asset_type="{{ asset.asset_type }}"
+        data-department="{{ asset.department or '' }}"
+        data-os="{{ asset.operating_system or '' }}">
+        <td>
+          <a class="asset-name-link" href="{{ url_for('assets.asset_detail', asset_id=asset.id) }}">
+            <b>{{ asset.asset_name or asset.hostname }}</b>
+            <small>{% if asset.hostname %}{{ asset.hostname }} / {% endif %}{{ asset.asset_type }}</small>
+          </a>
+        </td>
+        <td><span class="asset-criticality-pill asset-criticality-{{ asset.criticality|lower }}">{{ asset.criticality }}</span></td>
+        <td>{{ asset.ip_address or 'Not Available' }}</td>
+        <td>
+          {% if asset.owner %}
+          <button class="asset-owner-chip" type="button" data-asset-owner-card data-owner-name="{{ asset.owner|e }}" data-owner-phone="{{ asset.owner_phone|default('', true)|e }}" data-owner-email="{{ asset.owner_email|default('', true)|e }}">
+            {{ asset.owner }}
+          </button>
+          {% else %}
+          Not Available
+          {% endif %}
+        </td>
+        <td><span class="asset-dept-short" title="{{ asset.department or 'Not Available' }}">{{ department_short_label(asset.department) }}</span></td>
+        <td>{{ os_badge(asset.operating_system) }}</td>
+        <td><span class="asset-status-badge asset-status-{{ asset.status|lower }}" data-asset-status-url="{{ url_for('assets.asset_status_probe', asset_id=asset.id) }}" title="Status is based on recent alert telemetry or IP reachability.">{{ asset.status or 'Unknown' }}</span></td>
+        <td><span class="asset-risk-pill asset-risk-{{ risk.tone }}">{{ risk.score }}/100 {{ risk.label }}</span></td>
+        <td><a class="badge status asset-counter-link" href="{{ url_for('alerts.alerts', asset_id=asset.id, status='') }}">{{ asset.alerts|length }} alerts</a></td>
+        <td><a class="badge status asset-counter-link" href="{{ url_for('cases.cases', asset_id=asset.id) }}">{{ asset.cases|length }} cases</a></td>
+        {% if role_allows(current_user.role, 'Admin') %}
+        <td class="asset-actions">
+          <div class="asset-action-buttons">
+            <a class="btn btn-sm btn-ghost icon-btn asset-icon-action" title="Edit asset" aria-label="Edit asset" href="{{ url_for('assets.edit_asset', asset_id=asset.id) }}"><i data-lucide="pencil"></i></a>
+            <form method="post" action="{{ url_for('assets.delete_asset', asset_id=asset.id) }}" data-confirm-danger="Delete this asset? Existing alerts and cases will keep their evidence but lose asset context.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-ghost icon-btn asset-icon-action" title="Delete asset" aria-label="Delete asset"><i data-lucide="trash-2"></i></button>
+            </form>
+          </div>
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 11 if role_allows(current_user.role, 'Admin') else 10 }}" class="muted">No assets yet.</td></tr>
+      {% endfor %}
+      <tr data-asset-empty hidden><td colspan="{{ 11 if role_allows(current_user.role, 'Admin') else 10 }}" class="muted">No assets match the current filters.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="profile-modal-backdrop asset-owner-backdrop" id="assetOwnerModal" aria-hidden="true">
+  <article class="asset-owner-card" role="dialog" aria-modal="true" aria-label="Asset owner details">
+    <button class="profile-modal-close asset-owner-close" type="button" data-close-asset-owner aria-label="Close owner card"><i data-lucide="x"></i></button>
+    <span class="asset-owner-avatar"><i data-lucide="user-round"></i></span>
+    <small>Asset Owner</small>
+    <h2 data-owner-modal-name>Owner</h2>
+    <div class="asset-owner-fields">
+      <span><i data-lucide="phone"></i><b data-owner-modal-phone>Not provided</b></span>
+      <span><i data-lucide="mail"></i><b data-owner-modal-email>Not provided</b></span>
+    </div>
+  </article>
+</div>
+{% endblock %}

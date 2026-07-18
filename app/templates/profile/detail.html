@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Profile - AstoraSOC{% endblock %}
+{% block content %}
+<div class="profile-layout">
+  <section class="glass profile-card">
+    {% if user.profile_picture %}
+    <img class="avatar avatar-img image-preview-trigger" src="{{ url_for('profile.profile_picture', filename=user.profile_picture) }}" alt="{{ user.full_name }}" data-image-preview="{{ url_for('profile.profile_picture', filename=user.profile_picture) }}">
+    {% else %}
+    <div class="avatar">{{ user.full_name[:1] }}</div>
+    {% endif %}
+    <h1>{{ user.full_name }}{% set role_meta = role_styles.get(user.role) %}{% if role_meta and role_meta.icon %}<span class="role-inline-icon profile-role-icon" title="{{ user.role }}"><img src="{{ url_for('users.role_icon', filename=role_meta.icon) }}" alt="{{ user.role }}"></span>{% endif %}</h1>
+    <span class="role-badge role-{{ user.role|lower|replace(' ', '-') }}">{{ user.role }}</span>
+    <div class="profile-info-grid">
+      <span><strong>Email</strong><em>{{ user.email }}</em></span>
+      <span><strong>Department/team</strong><em>{{ user.department or '-' }}</em></span>
+      <span><strong>Job title</strong><em>{{ user.job_title or '-' }}</em></span>
+      <span><strong>Phone</strong><em>{{ user.phone or '-' }}</em></span>
+    </div>
+    <div class="meta-grid profile-meta-grid">
+      {% if role_allows(user.role, 'Analyst') %}
+      <span>Assigned <b>{{ assigned }}</b></span>
+      {% endif %}
+      <span>Last login <b>{{ format_short_datetime(user.last_login_at) }}</b></span>
+    </div>
+    <div class="actions profile-actions mt-3">
+      <a class="btn btn-ghost" href="{{ url_for('profile.edit_profile') }}"><i data-lucide="pencil"></i> Edit Profile</a>
+      <a class="btn btn-ghost" href="{{ url_for('auth.change_password') }}"><i data-lucide="key-round"></i> Change Password</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

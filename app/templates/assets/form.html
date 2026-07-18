@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ title }}</h1><p>Keep asset context concise: ownership, platform, and business impact.</p></div>
+  <a class="btn btn-ghost" href="{{ url_for('assets.assets') }}"><i data-lucide="arrow-left"></i>Assets</a>
+</div>
+
+<form method="post" class="glass stack asset-form">
+  {{ form.hidden_tag() }}
+  <div class="grid-2">
+    <div>{{ form.asset_name.label(class="form-label") }}{{ form.asset_name(class="form-control", placeholder="HR System, Payroll Server, SIEM Manager") }}</div>
+    <div>{{ form.hostname.label(class="form-label") }}{{ form.hostname(class="form-control", placeholder="endpoint-01 or server01") }}</div>
+    <div>{{ form.ip_address.label(class="form-label") }}{{ form.ip_address(class="form-control", placeholder="10.10.10.25", data_asset_ip="1") }}</div>
+    <div>{{ form.asset_type.label(class="form-label") }}{{ form.asset_type(class="form-select") }}</div>
+    <div>
+      {{ form.operating_system.label(class="form-label") }}
+      <div class="asset-os-detect-row">
+        {{ form.operating_system(class="form-select", data_asset_os="1") }}
+        <button type="button" class="btn btn-ghost asset-detect-btn" data-detect-os="{{ url_for('assets.detect_asset_os') }}"><i data-lucide="radar"></i>Detect</button>
+      </div>
+      <small class="asset-detect-status" data-detect-os-status>Manual OS selection stays available.</small>
+    </div>
+    <div>{{ form.criticality.label(class="form-label") }}{{ form.criticality(class="form-select") }}</div>
+    <div class="asset-auto-status-note"><span>Status</span><b>Auto detected</b><small>Online, Offline, or Unknown updates from linked alerts/cases and last-seen activity.</small></div>
+    <div>{{ form.owner.label(class="form-label") }}{{ form.owner(class="form-control", placeholder="Business owner or user") }}</div>
+    <div>{{ form.owner_phone.label(class="form-label") }}{{ form.owner_phone(class="form-control", placeholder="+975 17xxxxxx") }}</div>
+    <div>{{ form.owner_email.label(class="form-label") }}{{ form.owner_email(class="form-control", placeholder="owner@example.com") }}</div>
+    <div class="standard-picker">
+      {{ form.department.label(class="form-label") }}
+      {{ form.department(class="form-control", list="assetDepartmentOptions", placeholder="Search department or choose Other", data_standard_metadata="department", data_other_target="#departmentCustom") }}
+      <datalist id="assetDepartmentOptions">
+        {% for option in form.department_choices %}
+        <option value="{{ option }}"></option>
+        {% endfor %}
+      </datalist>
+      <input id="departmentCustom" class="form-control standard-custom-input" name="department_custom" placeholder="Custom department" value="" hidden>
+      <small class="standard-picker-hint">Use the standard label when possible for better reports and risk context.</small>
+      <span class="metadata-badge" data-standard-badge hidden></span>
+    </div>
+    <div class="standard-picker">
+      {{ form.business_function.label(class="form-label") }}
+      {{ form.business_function(class="form-control", list="assetBusinessFunctionOptions", placeholder="Search business function or choose Other", data_standard_metadata="business_function", data_other_target="#businessFunctionCustom") }}
+      <datalist id="assetBusinessFunctionOptions">
+        {% for option in form.business_function_choices %}
+        <option value="{{ option }}"></option>
+        {% endfor %}
+      </datalist>
+      <input id="businessFunctionCustom" class="form-control standard-custom-input" name="business_function_custom" placeholder="Custom business function" value="" hidden>
+      <small class="standard-picker-hint">This enriches impact analysis, AI summaries, and case reports.</small>
+      <span class="metadata-badge" data-standard-badge hidden></span>
+    </div>
+    <div>{{ form.location.label(class="form-label") }}{{ form.location(class="form-control", placeholder="Datacenter, Cloud, Office, Branch") }}</div>
+  </div>
+  <div>{{ form.description.label(class="form-label") }}{{ form.description(class="form-control", rows=3, placeholder="What this asset supports and why it matters operationally") }}</div>
+  <button class="btn btn-primary"><i data-lucide="save"></i>{{ form.submit.label.text }}</button>
+</form>
+{% endblock %}

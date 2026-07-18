@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% from "assets/_os_badge.html" import os_badge %}
+{% block title %}{{ asset.asset_name or asset.hostname }} - Asset Profile{% endblock %}
+{% block content %}
+<div class="page-head asset-profile-head">
+  <div>
+    <h1>{{ asset.asset_name or asset.hostname }}</h1>
+    <p>{{ asset.business_function or asset.description or 'Security asset intelligence profile.' }}</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-ghost" href="{{ url_for('assets.assets') }}"><i data-lucide="arrow-left"></i>Assets</a>
+    {% if role_allows(current_user.role, 'Admin') %}
+    <a class="btn btn-primary" href="{{ url_for('assets.edit_asset', asset_id=asset.id) }}"><i data-lucide="pencil"></i>Edit Asset</a>
+    {% endif %}
+  </div>
+</div>
+
+<section class="glass asset-profile-hero">
+  <div>
+    <span class="eyebrow">Asset Summary</span>
+    <h2>{{ asset.hostname or asset.asset_name }}</h2>
+    <p>{{ asset.description or 'No asset description recorded.' }}</p>
+  </div>
+  <div class="asset-profile-badges">
+    <span class="asset-criticality-pill asset-criticality-{{ asset.criticality|lower }}">{{ asset.criticality }}</span>
+    <span class="asset-status-badge asset-status-{{ asset.status|lower }}">{{ asset.status or 'Unknown' }}</span>
+    <span class="asset-risk-pill asset-risk-{{ risk.tone }}">{{ risk.score }}/100 {{ risk.label }}</span>
+  </div>
+</section>
+
+<section class="asset-profile-grid">
+  <div class="glass panel">
+    <div class="section-head compact-head"><div><h2>Asset Summary</h2><p>Identity, ownership, and operational context.</p></div></div>
+    <div class="asset-summary-grid">
+      <span>Asset Name <b>{{ asset.asset_name or asset.hostname }}</b></span>
+      <span>Hostname <b>{{ asset.hostname }}</b></span>
+      <span>IP Address <b>{{ asset.ip_address or 'Not Available' }}</b></span>
+      <span>Operating System <b>{{ os_badge(asset.operating_system) }}</b></span>
+      <span>Owner
+        <b>
+          {% if asset.owner %}
+          <button class="asset-owner-chip" type="button" data-asset-owner-card data-owner-name="{{ asset.owner|e }}" data-owner-phone="{{ asset.owner_phone|default('', true)|e }}" data-owner-email="{{ asset.owner_email|default('', true)|e }}">{{ asset.owner }}</button>
+          {% else %}
+          Not Available
+          {% endif %}
+        </b>
+      </span>
+      <span>Department <b>{% if asset.department %}<em class="asset-value-badge">{{ asset.department }}</em>{% else %}Not Available{% endif %}</b></span>
+      <span>Asset Type <b>{{ asset.asset_type }}</b></span>
+      <span>Location <b>{{ asset.location or 'Not Available' }}</b></span>
+      <span>Business Function <b>{% if asset.business_function %}<em class="asset-value-badge">{{ asset.business_function }}</em>{% else %}Not Available{% endif %}</b></span>
+    </div>
+  </div>
+
+  <aside class="glass panel">
+    <div class="section-head compact-head"><div><h2>Asset Intelligence</h2><p>Investigation and correlation signals.</p></div></div>
+    <div class="asset-intel-kpis">
+      <a href="{{ url_for('alerts.alerts', asset_id=asset.id, status='') }}"><span>Linked Alerts</span><b>{{ related_alerts|length }}</b></a>
+      <a href="{{ url_for('cases.cases', asset_id=asset.id) }}"><span>Linked Cases</span><b>{{ related_cases|length }}</b></a>
+      <span><span>Linked IOCs</span><b>{{ related_iocs|length }}</b></span>
+      <span><span>Linked Vulnerabilities</span><b>0</b></span>
+      <span><span>Open Cases</span><b>{{ risk.open_cases }}</b></span>
+      <span><span>Active Alerts</span><b>{{ risk.active_alerts }}</b></span>
+    </div>
+  </aside>
+</section>
+
+<section class="asset-profile-grid">
+  <div class="glass panel">
+    <div class="section-head compact-head"><div><h2>Asset Timeline</h2><p>Major asset and investigation events.</p></div></div>
+    <div class="asset-timeline">
+      {% for row in timeline_rows %}
+      <article>
+        <span>{{ row.kind }}</span>
+        <b>{{ row.details }}</b>
+        <small>{{ relative_time(row.time) }}</small>
+      </article>
+      {% else %}<p class="muted">No asset activity yet.</p>{% endfor %}
+    </div>
+  </div>
+
+  <aside class="glass panel">
+    <div class="section-head compact-head"><div><h2>Related IOCs</h2><p>Indicators observed through linked alerts and cases.</p></div></div>
+    <div class="asset-ioc-list">
+      {% for ioc in related_iocs %}
+      <span><b>{{ ioc.type }}</b>{{ ioc.value }}</span>
+      {% else %}<p class="muted">No related IOCs yet.</p>{% endfor %}
+    </div>
+  </aside>
+</section>
+
+<section class="asset-profile-grid">
+  <div class="glass panel">
+    <div class="section-head compact-head"><div><h2>Related Alerts</h2><p>Alerts currently linked to this asset.</p></div></div>
+    <div class="asset-related-list">
+      {% for alert in related_alerts %}
+      <a href="{{ url_for('alerts.alerts', asset_id=asset.id, status='') }}">
+        <b>{{ alert.tracking_id or alert.event_id or alert.id }} {{ alert.title }}</b>
+        <small>{{ alert.severity }} / {{ alert.status }} / {{ relative_time(alert.created_at) }}</small>
+      </a>
+      {% else %}<p class="muted">No related alerts.</p>{% endfor %}
+    </div>
+  </div>
+  <div class="glass panel">
+    <div class="section-head compact-head"><div><h2>Related Cases</h2><p>Cases currently linked to this asset.</p></div></div>
+    <div class="asset-related-list">
+      {% for case in related_cases %}
+      <a href="{{ url_for('cases.case_detail', case_id=case.id) }}">
+        <b>{{ tracking_label(case) }} {{ case.title }}</b>
+        <small>{{ case.severity }} / {{ case.status }} / {{ relative_time(case.updated_at) }}</small>
+      </a>
+      {% else %}<p class="muted">No related cases.</p>{% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="glass panel">
+  <div class="section-head compact-head"><div><h2>Related Vulnerabilities</h2><p>Future-ready vulnerability management context.</p></div></div>
+  <p class="muted">No linked vulnerabilities yet. Future scanner integrations can populate this section automatically.</p>
+</section>
+<div class="profile-modal-backdrop asset-owner-backdrop" id="assetOwnerModal" aria-hidden="true">
+  <article class="asset-owner-card" role="dialog" aria-modal="true" aria-label="Asset owner details">
+    <button class="profile-modal-close asset-owner-close" type="button" data-close-asset-owner aria-label="Close owner card"><i data-lucide="x"></i></button>
+    <span class="asset-owner-avatar"><i data-lucide="user-round"></i></span>
+    <small>Asset Owner</small>
+    <h2 data-owner-modal-name>Owner</h2>
+    <div class="asset-owner-fields">
+      <span><i data-lucide="phone"></i><b data-owner-modal-phone>Not provided</b></span>
+      <span><i data-lucide="mail"></i><b data-owner-modal-email>Not provided</b></span>
+    </div>
+  </article>
+</div>
+{% endblock %}

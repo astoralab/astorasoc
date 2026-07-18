@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Users - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Users</h1><p>Manage analysts, viewers, and administrators.</p></div>
+  {% if role_allows(current_user.role, 'Admin') %}
+  <div class="actions">
+    <a class="btn btn-ghost" href="{{ url_for('users.roles') }}"><i data-lucide="shield"></i> Roles</a>
+    <a class="btn btn-ghost" href="{{ url_for('users.new_user') }}"><i data-lucide="user-plus"></i> New User</a>
+  </div>
+  {% endif %}
+</div>
+<div class="glass">
+  <div class="table-responsive">
+    <table class="table table-dark table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Name</th>
+          {% if role_allows(current_user.role, 'Admin') %}<th>Username</th>{% endif %}
+          <th>Role</th>
+          <th>Status</th>
+          <th>Phone</th>
+          <th>Email</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for user in users %}
+      <tr>
+        <td><a href="{{ url_for('users.user_detail', user_id=user.id) }}">{{ user.full_name }}</a></td>
+        {% if role_allows(current_user.role, 'Admin') %}
+        <td>{{ user.username }}</td>
+        {% endif %}
+        <td><span class="role-badge role-{{ user.role|lower|replace(' ', '-') }}">{{ user.role }}</span></td>
+        <td><span class="status-dot {{ 'online' if user_is_online(user) else 'offline' }}" data-user-status="{{ user.id }}" title="{{ 'Online' if user_is_online(user) else 'Offline' }}"></span></td>
+        <td>{{ user.phone or '-' }}</td>
+        <td>{{ user.email }}</td>
+        <td>
+          {% if role_allows(current_user.role, 'Admin') %}
+          <div class="table-actions">
+            <a class="icon-btn" href="{{ url_for('users.edit_user', user_id=user.id) }}" title="Edit user"><i data-lucide="pencil"></i></a>
+            {% if user.id != current_user.id and user.username != 'admin' %}
+            <form method="post" action="{{ url_for('users.delete_user', user_id=user.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="icon-btn" title="Delete user" data-confirm-danger="Delete this user from the database? Case, audit, and timeline history will stay, but this account will be removed."><i data-lucide="trash-2"></i></button>
+            </form>
+            {% endif %}
+          </div>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 7 if role_allows(current_user.role, 'Admin') else 6 }}" class="muted">No users.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

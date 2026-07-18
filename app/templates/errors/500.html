@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Server Error - AstoraSOC{% endblock %}
+{% block body_class %}error-page-body{% endblock %}
+{% block content %}
+{% with code='500', accent='danger', kicker='System Recovery', heading='Something went wrong', message='AstoraSOC rolled back the transaction so the workspace data stays consistent.', hint='Try again once. If it repeats, check the server logs or recent changes.', hint_icon='activity' %}
+  {% include "errors/_error_page.html" %}
+{% endwith %}
+{% endblock %}

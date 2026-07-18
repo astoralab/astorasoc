@@ -1,0 +1,15 @@
+{% macro asset_badge(asset, compact=false) -%}
+  {% if asset %}
+  <span class="asset-context asset-criticality-{{ asset.criticality|lower }}">
+    <i data-lucide="server"></i>
+    <b>{{ asset.asset_name or asset.hostname }}</b>
+    <small>{{ asset.criticality }} asset{% if not compact %} / {{ asset.asset_type }}{% if asset.business_function %} / {{ asset.business_function }}{% elif asset.owner %} / {{ asset.owner }}{% endif %}{% endif %}</small>
+  </span>
+  {% else %}
+  <span class="asset-context asset-context-empty">
+    <i data-lucide="server-off"></i>
+    <b>No asset linked</b>
+    <small>Context unavailable</small>
+  </span>
+  {% endif %}
+{%- endmacro %}

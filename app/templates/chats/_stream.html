@@ -1,0 +1,96 @@
+{% set unread = namespace(shown=false) %}
+{% set days = namespace(last='') %}
+{% set thread = namespace(sender_id=0, day='') %}
+{% for message in messages %}
+  {% set message_local = local_datetime(message.created_at) %}
+  {% set message_day = message_local.strftime('%Y-%m-%d') %}
+  {% if message_day != days.last %}
+  <div class="chat-day-marker"><span>{{ message_local.strftime('%d.%m.%y') }}</span></div>
+  {% set days.last = message_day %}
+  {% set thread.sender_id = 0 %}
+  {% endif %}
+  {% if unread_since and not unread.shown and message.created_at >= unread_since %}
+  <div class="unread-marker" id="unreadMarker"><span>Unread messages</span></div>
+  {% set unread.shown = true %}
+  {% endif %}
+  {% if message.deleted_at %}
+  <div class="chat-message deleted"><span>Message deleted</span></div>
+  {% set thread.sender_id = 0 %}
+  {% else %}
+  {% set body = decrypt_text(message.body_encrypted) %}
+  {% set grouped = thread.sender_id == message.sender_id and thread.day == message_day %}
+  {% set current_name = '@' ~ current_user.full_name %}
+  {% set current_username = '@' ~ current_user.username %}
+  {% set current_role = '@' ~ current_user.role %}
+  {% set message_reactions = reactions.get(message.id, []) %}
+  <article class="chat-message {% if grouped %}grouped-message{% endif %} {% if message_reactions %}has-message-reactions{% endif %} {% if message.sender_id == current_user.id %}own-message{% endif %} {% if current_name in body or current_username in body or current_role in body %}mentioned-message{% endif %}" data-message-id="{{ message.id }}">
+    <button class="chat-avatar" type="button" data-profile-card="{{ message.sender.id }}">
+      {% if message.sender.profile_picture %}
+      <img src="{{ url_for('profile.profile_picture', filename=message.sender.profile_picture) }}" alt="{{ message.sender.full_name }}">
+      {% else %}{{ message.sender.full_name[:1] }}{% endif %}
+    </button>
+    <div class="chat-bubble">
+      {% if not grouped %}
+      <div class="chat-meta">
+        <button class="profile-chip role-{{ message.sender.role|lower|replace(' ', '-') }}" type="button" data-profile-card="{{ message.sender.id }}">{{ message.sender.full_name }}</button>
+        {% set role_meta = role_styles.get(message.sender.role) %}
+        {% if role_meta and role_meta.icon %}
+        <span class="role-inline-icon" title="{{ message.sender.role }}"><img src="{{ url_for('users.role_icon', filename=role_meta.icon) }}" alt="{{ message.sender.role }}"></span>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if message.reply_to %}
+      <a class="reply-preview" href="#message-{{ message.reply_to.id }}">
+        <i data-lucide="corner-up-left"></i>
+        <span>{{ message.reply_to.sender.full_name }}</span>
+        <small>{{ decrypt_text(message.reply_to.body_encrypted)[:80] if not message.reply_to.deleted_at else 'Message deleted' }}</small>
+      </a>
+      {% endif %}
+      <p class="chat-body" id="message-{{ message.id }}">{{ render_chat_body(body) }}</p>
+      {% if message.attachment_path %}
+      <div class="attachment-card">
+        {% if message.attachment_kind == 'image' %}
+        <img class="attachment-preview attachment-image" src="{{ url_for('chats.preview_attachment', filename=message.attachment_path) }}" alt="{{ message.attachment_name }}">
+        {% elif message.attachment_kind == 'video' %}
+        <video class="attachment-preview" controls preload="metadata" src="{{ url_for('chats.preview_attachment', filename=message.attachment_path) }}"></video>
+        {% elif message.attachment_kind == 'audio' %}
+        <audio class="attachment-audio" controls src="{{ url_for('chats.preview_attachment', filename=message.attachment_path) }}"></audio>
+        {% endif %}
+        <div class="attachment-row">
+          <span><i data-lucide="paperclip"></i>{{ message.attachment_name }}</span>
+          <a class="icon-btn" href="{{ url_for('chats.download_attachment', filename=message.attachment_path) }}" title="Download attachment" aria-label="Download attachment"><i data-lucide="download"></i></a>
+        </div>
+      </div>
+      {% endif %}
+      <div class="chat-footer">
+        <small class="chat-time">{{ format_chat_time(message.created_at) }}</small>
+        {% if message.sender_id == current_user.id %}
+        <button class="link-button" type="button" title="Edit message" data-edit-message="{{ message.id }}" data-edit-body="{{ body|e }}"><i data-lucide="pencil"></i></button>
+        <form method="post" action="{{ url_for('chats.delete_message', message_id=message.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="link-button" title="Delete message"><i data-lucide="trash-2"></i></button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="chat-reaction-bar {% if message_reactions %}has-reactions{% endif %}" data-reaction-bar="{{ message.id }}">
+        <div class="chat-reaction-list" data-reaction-list="{{ message.id }}">
+          {% for reaction in message_reactions %}
+          <button class="chat-reaction {% if reaction.reacted %}active{% endif %}" type="button" data-react-url="{{ url_for('chats.react_message', message_id=message.id) }}" data-emoji="{{ reaction.emoji }}">{{ reaction.html|safe }} <span>{{ reaction.count }}</span></button>
+          {% endfor %}
+        </div>
+        <button class="chat-reaction-add" type="button" title="React" data-reaction-menu-for="{{ message.id }}"><i data-lucide="smile-plus"></i></button>
+        <button class="chat-reaction-add" type="button" title="Reply" data-reply-message="{{ message.id }}" data-reply-author="{{ message.sender.full_name|e }}" data-reply-body="{{ body[:80]|e }}"><i data-lucide="reply"></i></button>
+        <div class="emoji-menu reaction-menu" data-reaction-menu="{{ message.id }}">
+          {% for emoji in emojis %}
+          <button type="button" data-react-url="{{ url_for('chats.react_message', message_id=message.id) }}" data-emoji="{{ emoji }}">{{ emoji_html(emoji)|safe }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </article>
+  {% set thread.sender_id = message.sender_id %}
+  {% set thread.day = message_day %}
+  {% endif %}
+{% else %}
+<p class="muted">No chat messages yet.</p>
+{% endfor %}

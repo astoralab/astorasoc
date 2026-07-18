@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Playbooks - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Playbook Engine</h1><p>Central investigation task templates for alert-to-case and manual case automation.</p></div>
+</div>
+
+<section class="grid-2 playbook-admin-grid">
+  <div class="glass panel">
+    <div class="section-head compact-head">
+      <div><h2>Create Playbook</h2><p>Match SIEM alerts or manual cases by source metadata, MITRE, case type, or fallback logic.</p></div>
+    </div>
+    <form method="post" class="form-grid" data-playbook-form>
+      {{ form.hidden_tag() }}
+      <div>{{ form.name.label(class="form-label") }}{{ form.name(class="form-control", placeholder="Vulnerability remediation workflow", data_preview_name="true") }}</div>
+      <div>{{ form.category.label(class="form-label") }}{{ form.category(class="form-select", data_preview_category="true") }}</div>
+      <div>{{ form.match_type.label(class="form-label") }}{{ form.match_type(class="form-select", data_playbook_match_type="true") }}</div>
+      <div data-match-wrap>
+        {{ form.match_value.label(class="form-label") }}
+        {{ form.match_value(class="form-control", placeholder="60602, authentication, malware, or case type", data_match_value="true", data_preview_value="true") }}
+        <select class="form-select hidden" data-match-case>
+          {% for value, label in case_type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+        <select class="form-select hidden" data-match-mitre>
+          {% for value, label in mitre_tactic_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+        <p class="field-hint" data-match-hint>Generic fallback does not need a value.</p>
+      </div>
+      <div>{{ form.priority.label(class="form-label") }}{{ form.priority(class="form-control", data_preview_priority="true") }}</div>
+      <div class="span-2">{{ form.description.label(class="form-label") }}{{ form.description(class="form-control", rows=2, placeholder="SOC use case and response intent", data_preview_description="true") }}</div>
+      <div class="span-2">{{ form.tasks_text.label(class="form-label") }}{{ form.tasks_text(class="form-control monospace-input", rows=8, placeholder="One investigation step per line", data_preview_tasks="true") }}</div>
+      <label class="checkline">{{ form.is_active() }} Active</label>
+      <button class="btn btn-primary"><i data-lucide="book-plus"></i>Create Playbook</button>
+    </form>
+  </div>
+
+  <div class="glass panel playbook-preview-panel">
+    <div class="section-head compact-head">
+      <div><h2>Live Preview</h2><p>How this playbook will appear in cases and reports.</p></div>
+    </div>
+    <article class="playbook-preview-card">
+      <div class="playbook-card-head">
+        <div>
+          <span class="badge category-badge" data-preview-category>Generic</span>
+          <h3 data-preview-name>New playbook</h3>
+          <p data-preview-description>Describe the investigation purpose.</p>
+        </div>
+        <span class="badge status">Draft</span>
+      </div>
+      <div class="playbook-match-grid compact">
+        <span>Match <b data-preview-match>SIEM Rule ID</b></span>
+        <span>Value <b data-preview-value>-</b></span>
+        <span>Priority <b data-preview-priority>100</b></span>
+        <span>Steps <b data-preview-step-count>0</b></span>
+      </div>
+      <ol class="playbook-step-list" data-preview-step-list>
+        <li class="muted">Add investigation steps to preview the workflow.</li>
+      </ol>
+    </article>
+    <div class="playbook-help-list compact">
+      <span><b>Priority order</b>SIEM Rule ID, Source Category, MITRE Tactic, Alert Type, Case Type, then Generic Fallback.</span>
+      <span><b>Manual cases</b>When no SIEM metadata exists, AstoraSOC uses Case Type matching before Generic fallback.</span>
+      <span><b>Reports</b>Reports only include the active playbook aligned with the case type.</span>
+    </div>
+  </div>
+</section>
+
+<section class="glass panel">
+  <div class="section-head compact-head">
+    <div><h2>Templates</h2><p>Manage reusable investigation workflows, versions, and lifecycle state.</p></div>
+    <span class="badge status">{{ templates|length }}</span>
+  </div>
+
+  <div class="playbook-toolbar">
+    <form method="get" class="playbook-filter-form">
+      <input class="form-control" type="search" name="q" value="{{ filters.q }}" placeholder="Search playbooks">
+      <select class="form-select" name="category">
+        <option value="">All categories</option>
+        {% for value, label in category_choices %}
+        <option value="{{ value }}" {% if filters.category == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select class="form-select" name="status">
+        {% for value, label in [('active', 'Active'), ('inactive', 'Inactive'), ('archived', 'Archived'), ('all', 'All statuses')] %}
+        <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select class="form-select" name="sort">
+        {% for value, label in [('priority', 'Priority'), ('usage', 'Usage count'), ('recent', 'Recently applied')] %}
+        <option value="{{ value }}" {% if filters.sort == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-ghost"><i data-lucide="search"></i>Filter</button>
+    </form>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('playbooks.import_playbook') }}" class="playbook-import-form">
+      {{ import_form.hidden_tag() }}
+      {{ import_form.playbook_file(class="compact-file-control", accept=".json") }}
+      <button class="btn btn-ghost"><i data-lucide="upload"></i>Import</button>
+    </form>
+  </div>
+
+  <div class="playbook-template-list">
+    {% for template in templates %}
+    <article class="playbook-template-card {% if not template.is_active %}inactive{% endif %} {% if template.is_archived %}archived{% endif %}">
+      <div class="playbook-card-head">
+        <div>
+          <div class="playbook-title-line">
+            <span class="badge category-badge">{{ template.category or 'Generic' }}</span>
+            <h3>{{ template.name }}</h3>
+          </div>
+          <p>{{ template.description or 'No description recorded.' }}</p>
+        </div>
+        <div class="playbook-card-badges">
+          <span class="badge {{ 'muted-badge' if template.is_archived else ('status' if template.is_active else 'muted-badge') }}">{{ 'Archived' if template.is_archived else ('Active' if template.is_active else 'Inactive') }}</span>
+          <span class="badge neutral-badge">v{{ template.version or 1 }}</span>
+        </div>
+      </div>
+      <div class="playbook-match-grid">
+        <span>Match <b>{{ match_labels.get(template.match_type, template.match_type) }}</b></span>
+        <span>Value <b>{{ template.match_value }}</b></span>
+        <span>Priority <b>{{ template.priority }}</b></span>
+        <span>Steps <b>{{ playbook_steps(template)|length }}</b></span>
+        <span>Used <b>{{ template.usage_count or 0 }}</b></span>
+        <span>Last applied <b>{{ format_short_datetime(template.last_applied_at) if template.last_applied_at else 'Never' }}</b></span>
+        <span>Created by <b>{{ template.created_by.full_name if template.created_by else 'System' }}</b></span>
+        <span>Modified by <b>{{ template.updated_by.full_name if template.updated_by else 'System' }}</b></span>
+      </div>
+      <ol class="playbook-step-list">
+        {% for step in playbook_steps(template)[:6] %}<li>{{ step }}</li>{% endfor %}
+      </ol>
+      {% if version_counts.get(template.id) %}
+      <details class="playbook-version-history">
+        <summary><i data-lucide="history"></i>{{ version_counts.get(template.id) }} version snapshot{{ '' if version_counts.get(template.id) == 1 else 's' }}</summary>
+        <p>Previous snapshots are stored for audit and rollback review.</p>
+      </details>
+      {% endif %}
+      <div class="actions">
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('playbooks.edit_playbook', template_id=template.id) }}"><i data-lucide="pencil"></i>Edit</a>
+        <form method="post" action="{{ url_for('playbooks.clone_playbook', template_id=template.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-ghost"><i data-lucide="copy-plus"></i>Clone</button>
+        </form>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('playbooks.export_playbook', template_id=template.id) }}"><i data-lucide="download"></i>Export</a>
+        {% if not template.is_archived %}
+        <form method="post" action="{{ url_for('playbooks.toggle_playbook', template_id=template.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-ghost"><i data-lucide="{{ 'pause-circle' if template.is_active else 'play-circle' }}"></i>{{ 'Disable' if template.is_active else 'Enable' }}</button>
+        </form>
+        <form method="post" action="{{ url_for('playbooks.archive_playbook', template_id=template.id) }}" data-confirm-danger="Archive this playbook? It will stop matching new cases but remain available for audit history.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-ghost"><i data-lucide="archive"></i>Archive</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('playbooks.delete_playbook', template_id=template.id) }}" data-confirm-danger="Delete this playbook template? Existing case tasks will remain.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-ghost"><i data-lucide="trash-2"></i>Delete</button>
+        </form>
+      </div>
+    </article>
+    {% else %}<p class="muted">No playbook templates match the current filters.</p>{% endfor %}
+  </div>
+</section>
+{% endblock %}

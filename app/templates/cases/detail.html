@@ -1,0 +1,673 @@
+{% extends "base.html" %}
+{% from "assets/_asset_badge.html" import asset_badge %}
+{% set review_mode = review_mode|default(false) %}
+{% set can_investigate = (not review_mode and role_allows(current_user.role, 'Analyst')) %}
+{% set can_delete_evidence = role_allows(current_user.role, 'Admin', 'Lead', 'Analyst') %}
+{% block title %}{{ 'Review' if review_mode else 'Case' }} {{ tracking_label(case) }} - AstoraSOC{% endblock %}
+{% set case_ref = tracking_label(case) %}
+{% set is_false_positive = case.closure_reason and 'false positive' in case.closure_reason|lower %}
+{% set workflow_key = 'FALSE_POSITIVE' if is_false_positive else case.status %}
+{% block content %}
+<div class="case-workspace {% if review_mode %}review-workspace{% endif %}" data-case-investigation>
+  <div class="case-hero glass">
+    <div>
+      <span class="eyebrow">{{ 'Closure review' if review_mode else 'Investigation workspace' }} / {{ case.source }} / {{ case_ref }}</span>
+      <h1>{{ case_ref }} {{ case.title }}</h1>
+      <p>{{ case.description or 'No description provided.' }}</p>
+      {% if review_mode %}
+      <div class="review-hero-actions">
+        <a class="btn btn-ghost" href="{{ url_for('cases.review', view='cases') }}"><i data-lucide="arrow-left"></i>Review Queue</a>
+        <a class="btn btn-ghost" href="{{ url_for('cases.case_detail', case_id=case.id) }}"><i data-lucide="briefcase-business"></i>Investigation Workspace</a>
+      </div>
+      {% endif %}
+    </div>
+    <div class="case-hero-status">
+      <span class="badge status status-{{ case.status|lower|replace('_', '-') }}" data-case-status="{{ case.id }}">{{ status_label(case.status) }}</span>
+      <span class="badge sev-{{ case.severity|lower }}">{{ case.severity }}</span>
+      {% if active_playbook %}<span class="badge status">{{ active_playbook.name }}</span>{% endif %}
+      {% if case.asset %}<span class="asset-criticality-pill asset-criticality-{{ case.asset.criticality|lower }}">{{ case.asset.criticality }} Asset</span>{% endif %}
+      <small>Due <b><span class="due-badge due-{{ due_state(case.due_at) }}">{{ format_short_datetime(case.due_at) if case.due_at else 'Not set' }}</span></b></small>
+      <small>Updated <b data-case-updated="{{ case.id }}">{{ format_short_datetime(case.updated_at) }}</b></small>
+    </div>
+  </div>
+
+  <div class="case-status-ribbon glass">
+    {% for key, label in [('NEW', 'New'), ('ASSIGNED', 'Assigned'), ('INVESTIGATING', 'Investigating'), ('SUBMITTED_FOR_REVIEW', 'Pending Review'), ('CLOSED', 'Closed'), ('FALSE_POSITIVE', 'False Positive')] %}
+    <span class="case-state {% if workflow_key == key or (key == 'SUBMITTED_FOR_REVIEW' and case.status == 'SUBMITTED_FOR_REVIEW') %}active{% endif %}">{{ label }}</span>
+    {% endfor %}
+  </div>
+
+  {% if review_mode %}
+  <section class="glass investigation-panel review-decision-panel">
+    <div class="section-head compact-head">
+      <div><h2>Review Decision</h2><p>Closure readiness, evidence, and reviewer action in one place.</p></div>
+      <span class="badge status">{{ completed_tasks|length }}/{{ case.tasks|length }} tasks complete</span>
+    </div>
+    <div class="review-readiness-grid">
+      <span class="{% if case.assigned_users or case.assignee %}ready{% endif %}">Owner <b>{% for owner in case.assigned_users %}{{ owner.full_name }}{% if not loop.last %}, {% endif %}{% else %}{{ case.assignee.full_name if case.assignee else 'Unassigned' }}{% endfor %}</b></span>
+      <span class="{% if not active_tasks %}ready{% endif %}">Open Tasks <b>{{ active_tasks|length }}</b></span>
+      <span class="{% if case.evidence|length %}ready{% endif %}">Evidence <b>{{ case.evidence|length }} file{{ '' if case.evidence|length == 1 else 's' }}</b></span>
+      <span class="{% if case.notes|length %}ready{% endif %}">Notes <b>{{ case.notes|length }} entr{{ 'y' if case.notes|length == 1 else 'ies' }}</b></span>
+      <span class="{% if case.iocs|length %}ready{% endif %}">IOCs <b>{{ case.iocs|length }}</b></span>
+      <span class="{% if case.asset %}ready{% endif %}">Asset Impact <b>{{ (case.asset.criticality ~ ' / ' ~ case.asset.hostname) if case.asset else 'No asset linked' }}</b></span>
+      <span class="{% if case.closure_reason %}ready{% endif %}">Closure Reason <b>{{ case.closure_reason or 'Not recorded' }}</b></span>
+    </div>
+    <div class="review-decision-actions">
+      {% if role_allows(current_user.role, 'Lead') %}
+      {% if case.status != 'CLOSED' %}
+      <form method="post" action="{{ url_for('cases.review', view='cases') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="case_id" value="{{ case.id }}">
+        <input type="hidden" name="action" value="approve_close">
+        <button class="btn btn-primary" data-confirm-danger="Approve closure for this case?"><i data-lucide="check-circle"></i>Approve Closure</button>
+      </form>
+      <form method="post" action="{{ url_for('cases.review', view='cases') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="case_id" value="{{ case.id }}">
+        <input type="hidden" name="action" value="reopen">
+        <button class="btn btn-ghost" data-confirm-danger="Send this case back for more work?"><i data-lucide="rotate-ccw"></i>Request More Work</button>
+      </form>
+      {% if case.severity != 'Critical' %}
+      <form method="post" action="{{ url_for('cases.review', view='cases') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="case_id" value="{{ case.id }}">
+        <input type="hidden" name="action" value="escalate">
+        <button class="btn btn-ghost"><i data-lucide="arrow-up-circle"></i>Escalate</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('cases.review', view='cases') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="case_id" value="{{ case.id }}">
+        <input type="hidden" name="action" value="false_positive">
+        <button class="btn btn-ghost" data-confirm-danger="Mark this case as false positive?"><i data-lucide="ban"></i>False Positive</button>
+      </form>
+      {% else %}
+      <form method="post" action="{{ url_for('cases.review', view='cases') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="case_id" value="{{ case.id }}">
+        <input type="hidden" name="action" value="reopen">
+        <button class="btn btn-primary"><i data-lucide="rotate-ccw"></i>Reopen Case</button>
+      </form>
+      {% endif %}
+      {% else %}
+      <span class="badge status">View Only</span>
+      <span class="muted">Lead action required</span>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="case-investigation-grid">
+    <div class="case-main-column">
+      <div class="glass investigation-panel">
+        <div class="section-head compact-head">
+          <div><h2>{{ 'Review Summary' if review_mode else 'Summary' }}</h2><p>{{ 'Approval snapshot for the reviewer.' if review_mode else 'Normalized case fields for active investigation.' }}</p></div>
+          <div class="actions">
+            {% if report_available %}
+            <a class="btn btn-primary" href="{{ url_for('reports.case_report_docx', case_id=case.id) }}" data-report-download data-report-label="Generate DOCX" data-report-loading="Generating DOCX..."><i data-lucide="file-text"></i><span>Generate DOCX</span></a>
+            <a class="btn btn-ghost" href="{{ url_for('reports.case_report', case_id=case.id) }}" data-report-download data-report-label="Generate PDF" data-report-loading="Generating PDF..."><i data-lucide="file-down"></i><span>Generate PDF</span></a>
+            {% endif %}
+          </div>
+        </div>
+        {% if can_investigate and case.status != 'CLOSED' %}
+        <div class="closure-review-cta">
+          <div>
+            <b>Ready for Lead review?</b>
+            <span>Complete closure readiness, then submit the investigation for approval.</span>
+          </div>
+          <form method="post" action="{{ url_for('cases.submit_review', case_id=case.id) }}" data-loading-message="Requesting review">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-primary"><i data-lucide="send"></i>Request Closure Review</button>
+          </form>
+        </div>
+        {% endif %}
+        <div class="case-metric-strip">
+          {% for metric in case_metrics %}
+          {% if metric.value %}<span><small>{{ metric.label }}</small><b>{{ metric.value }}</b></span>{% endif %}
+          {% endfor %}
+        </div>
+        <div class="case-summary-grid">
+          <span>Owner <b>{% for owner in case.assigned_users %}{{ owner.full_name }}{% if not loop.last %}, {% endif %}{% else %}{{ case.assignee.full_name if case.assignee else 'Unassigned' }}{% endfor %}</b></span>
+          <span>Incident Type <b>{{ case.incident_type or case.case_type or 'Manual Investigation' }}</b></span>
+          {% if case.business_impact %}<span>Business Impact <b>{{ case.business_impact }}</b></span>{% endif %}
+          <span>Playbook <b>{{ active_playbook.name if active_playbook else 'No playbook applied' }}</b></span>
+          {% if active_playbook %}<span>Playbook Category <b>{{ active_playbook.category }}</b></span>{% endif %}
+          <span>Due Date <b><span class="due-badge due-{{ due_state(case.due_at) }}">{{ format_short_datetime(case.due_at) if case.due_at else 'Not set' }}</span></b></span>
+          {% if case.asset %}<span class="case-asset-summary">Linked Asset <b>{{ asset_badge(case.asset) }}</b></span>{% endif %}
+          <span>Tracking ID <b id="case-tracking-id">{{ case_ref }}</b></span>
+          <span>Created Time <b>{{ format_short_datetime(case.created_at) }}</b></span>
+          {% if case_times.assigned_at %}<span>Assigned Time <b>{{ format_short_datetime(case_times.assigned_at) }}</b></span>{% endif %}
+          {% if case.closed_at %}<span>Closed Time <b>{{ format_short_datetime(case.closed_at) }}</b></span>{% endif %}
+          {% if case.rule_id %}<span>Rule ID <b>{{ case.rule_id }}</b></span>{% endif %}
+          {% if case.affected_host %}<span>Host <b>{{ case.affected_host }}</b></span>{% endif %}
+          {% if case.affected_user %}<span>Username <b>{{ case.affected_user }}</b></span>{% endif %}
+          {% if case.source_ip %}<span>Source IP <b>{{ case.source_ip }}</b></span>{% endif %}
+          {% if case.destination_ip %}<span>Destination IP <b>{{ case.destination_ip }}</b></span>{% endif %}
+          {% if case.mitre_tactic %}<span>MITRE Tactic <b>{{ case.mitre_tactic }}</b></span>{% endif %}
+          {% if case.mitre_technique %}<span>MITRE Technique <b>{{ case.mitre_technique }}</b></span>{% endif %}
+        </div>
+        {% if 'vulnerability' in ((case.incident_type or case.case_type or '')|lower) %}
+        <div class="vuln-summary-grid">
+          {% if case.cve_id %}<span>CVE ID <b>{{ case.cve_id }}</b></span>{% endif %}
+          {% if case.cvss_score %}<span>CVSS Score <b>{{ case.cvss_score }}</b></span>{% endif %}
+          {% if case.affected_software %}<span>Affected Software <b>{{ case.affected_software }}</b></span>{% endif %}
+          {% if case.affected_version %}<span>Affected Version <b>{{ case.affected_version }}</b></span>{% endif %}
+          {% if case.fixed_version %}<span>Fixed Version <b>{{ case.fixed_version }}</b></span>{% endif %}
+          {% if case.patch_status %}<span>Patch Status <b>{{ case.patch_status }}</b></span>{% endif %}
+          {% if case.remediation_owner %}<span>Remediation Owner <b>{{ case.remediation_owner }}</b></span>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="glass investigation-panel" id="case-resolution">
+        <div class="section-head compact-head">
+          <div><h2>Resolution</h2><p>Closure evidence, root cause, validation, and report-ready findings.</p></div>
+          <span class="badge status">{{ closure_readiness|selectattr('ready')|list|length }}/{{ closure_readiness|length }} ready</span>
+        </div>
+        <div class="closure-readiness-list">
+          {% for item in closure_readiness %}
+          <span class="{% if item.ready %}ready{% endif %}"><i data-lucide="{{ 'check-circle-2' if item.ready else 'circle' }}"></i>{{ item.label }}{% if item.required %}<small>Required</small>{% endif %}</span>
+          {% endfor %}
+        </div>
+        {% set has_resolution_text = case.root_cause or case.resolution_summary or case.lessons_learned or case.validation_performed or case.closure_notes %}
+        {% if has_resolution_text and not can_investigate %}
+        <div class="resolution-readout">
+          {% if case.root_cause %}<article><span>Root Cause</span><p>{{ case.root_cause }}</p></article>{% endif %}
+          {% if case.resolution_summary %}<article><span>Resolution Summary</span><p>{{ case.resolution_summary }}</p></article>{% endif %}
+          {% if case.validation_performed %}<article><span>Validation Performed</span><p>{{ case.validation_performed }}</p></article>{% endif %}
+          {% if case.lessons_learned %}<article><span>Lessons Learned</span><p>{{ case.lessons_learned }}</p></article>{% endif %}
+          {% if case.closure_notes %}<article><span>Closure Notes</span><p>{{ case.closure_notes }}</p></article>{% endif %}
+        </div>
+        {% endif %}
+        {% if can_investigate and case.status != 'CLOSED' %}
+        <form method="post" action="{{ url_for('cases.update_resolution', case_id=case.id) }}" class="resolution-form" data-loading-message="Saving resolution">
+          {{ resolution_form.hidden_tag() }}
+          <label>Business Impact {{ resolution_form.business_impact(class="form-select") }}</label>
+          <label>Root Cause {{ resolution_form.root_cause(class="form-control", rows=3, placeholder="Underlying cause confirmed during investigation") }}</label>
+          <label>Resolution Summary {{ resolution_form.resolution_summary(class="form-control", rows=3, placeholder="Remediation performed and final outcome") }}</label>
+          <label>Validation Performed {{ resolution_form.validation_performed(class="form-control", rows=3, placeholder="Verification scans, retests, monitoring, or reviewer validation") }}</label>
+          <label>Lessons Learned {{ resolution_form.lessons_learned(class="form-control", rows=3, placeholder="Process, control, or hardening improvements") }}</label>
+          <label>Closure Notes {{ resolution_form.closure_notes(class="form-control", rows=3, placeholder="Final notes for Lead review and report") }}</label>
+          <button class="btn btn-primary"><i data-lucide="save"></i>Save Resolution</button>
+        </form>
+        {% endif %}
+      </div>
+
+      {% set pending_count = case.containment_actions|selectattr('status', 'equalto', 'PENDING_APPROVAL')|list|length %}
+      {% set approved_count = case.containment_actions|selectattr('status', 'equalto', 'APPROVED')|list|length %}
+      {% set executed_count = case.containment_actions|selectattr('status', 'equalto', 'EXECUTED')|list|length %}
+      {% set failed_count = case.containment_actions|selectattr('status', 'equalto', 'FAILED')|list|length %}
+      {% set cancelled_count = case.containment_actions|selectattr('status', 'equalto', 'CANCELLED')|list|length %}
+      <div class="glass investigation-panel containment-panel containment-console-panel">
+        <div class="section-head compact-head">
+          <div><h2>Response Actions</h2><p>Optional containment requests for actions like block IP, disable user, isolate host, or quarantine file.</p></div>
+          <span class="badge status">{{ case.containment_actions|length }}</span>
+        </div>
+
+        {% if case.containment_actions|length %}
+        <div class="containment-stats">
+          <span><small>Pending Approval</small><b>{{ pending_count }}</b></span>
+          <span><small>Approved</small><b>{{ approved_count }}</b></span>
+          <span><small>Executed</small><b>{{ executed_count }}</b></span>
+          <span><small>Failed</small><b>{{ failed_count }}</b></span>
+          <span><small>Cancelled</small><b>{{ cancelled_count }}</b></span>
+        </div>
+        {% endif %}
+
+        <div class="containment-workflow-console">
+          <div class="containment-request-panel">
+            <div class="mini-section-head">
+              <span class="response-icon"><i data-lucide="shield-plus"></i></span>
+              <div><h3>Request Response Action</h3><p>Use this only when the case needs active containment or response.</p></div>
+            </div>
+            {% if can_investigate and case.status != 'CLOSED' %}
+            <form method="post" action="{{ url_for('cases.add_containment_action', case_id=case.id) }}" class="containment-request-form" data-containment-form data-loading-message="Requesting action" data-confirm-danger="Request this containment action? It will not execute until approved and manually executed.">
+              {{ containment_form.hidden_tag() }}
+              <label>Action Type {{ containment_form.action_type(class="form-select", id="containmentActionType") }}</label>
+              <label>Target IOC {{ containment_form.target(class="form-control", id="containmentTarget", placeholder="IP, user, process, file hash, hostname, or rule") }}</label>
+              <label>Asset / Host {{ containment_form.target_host(class="form-control", id="containmentTargetHost", placeholder=case.affected_host or "Host, agent name, or asset") }}</label>
+              <label>Risk Level {{ containment_form.risk_level(class="form-select", id="containmentRiskLevel") }}</label>
+              <label>Approval Requirement {{ containment_form.approval_requirement(class="form-select") }}</label>
+              <label class="span-2">Reason {{ containment_form.reason(class="form-control", rows=3, placeholder="Business/security reason and expected impact") }}</label>
+              <label class="span-2">Analyst Notes {{ containment_form.notes(class="form-control", rows=3, placeholder="Commands planned, validation steps, ticket ID, or operator notes") }}</label>
+              <button class="btn btn-primary span-2" data-high-risk-actions="DISABLE_USER,ISOLATE_HOST,KILL_PROCESS"><i data-lucide="shield-alert"></i>Request Action</button>
+            </form>
+            {% else %}
+            <div class="empty-state compact-empty">Containment requests are available only in active case investigations.</div>
+            {% endif %}
+          </div>
+
+          <aside class="containment-context-panel">
+            <div class="mini-section-head">
+              <span class="response-icon"><i data-lucide="scan-search"></i></span>
+              <div><h3>Containment Preview</h3><p>Context changes when an IOC or action target is selected.</p></div>
+            </div>
+            <div class="containment-preview">
+              <span>Selected IOC <b data-containment-preview-ioc>No IOC selected</b></span>
+              <span>Action Impact <b data-containment-preview-impact>Manual approval required before execution.</b></span>
+              <span>Linked Asset <b>{{ asset_badge(case.asset) }}</b></span>
+              <span>Asset Criticality <b class="asset-criticality-pill asset-criticality-{{ (case.asset.criticality|lower) if case.asset else 'medium' }}">{{ case.asset.criticality if case.asset else 'Unknown' }}</b></span>
+              <span>Primary Host <b data-containment-preview-host>{{ case.affected_host or (case.asset.hostname if case.asset else 'Not Available') }}</b></span>
+              <span>Provider <b>Manual Execution</b></span>
+            </div>
+            <div class="containment-risk-strip" data-containment-risk-strip>
+              <i data-lucide="activity"></i>
+              <span>Risk indicators update from the selected action, IOC, and linked asset.</span>
+            </div>
+            <div class="related-alert-mini-list">
+              <h4>Recent Related Alerts</h4>
+              {% for alert in case.alerts[:3] %}
+              <span><span class="badge sev-{{ alert.severity|lower }}">{{ alert.severity }}</span>{{ tracking_label(alert) }} {{ alert.title }}</span>
+              {% else %}
+              <div class="empty-state compact-empty">No related alerts linked to this case.</div>
+              {% endfor %}
+            </div>
+          </aside>
+        </div>
+
+        {% if case.containment_actions|length %}
+        <div class="containment-filter-bar">
+          <input class="form-control form-control-sm" data-containment-search placeholder="Search action, target, analyst, result">
+          <select class="form-select form-select-sm" data-containment-filter-status>
+            <option value="">All statuses</option>
+            {% for key, label in [('DRAFT','Draft'),('PENDING_APPROVAL','Pending Approval'),('APPROVED','Approved'),('REJECTED','Rejected'),('QUEUED','Queued'),('EXECUTING','Executing'),('EXECUTED','Executed'),('FAILED','Failed'),('CANCELLED','Cancelled'),('ROLLED_BACK','Rolled Back')] %}
+            <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <select class="form-select form-select-sm" data-containment-filter-action>
+            <option value="">All actions</option>
+            {% for key, label in [('BLOCK_IP','Block IP'),('DISABLE_USER','Disable User'),('KILL_PROCESS','Kill Process'),('ISOLATE_HOST','Isolate Host'),('ADD_FIREWALL_RULE','Add Firewall Rule'),('QUARANTINE_FILE','Quarantine File'),('CUSTOM_SCRIPT','Custom Script')] %}
+            <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <input class="form-control form-control-sm" data-containment-filter-analyst placeholder="Analyst">
+          <input class="form-control form-control-sm" type="date" data-containment-filter-from>
+          <input class="form-control form-control-sm" type="date" data-containment-filter-to>
+        </div>
+
+        <div class="containment-table-wrap">
+          <table class="containment-queue-table">
+            <thead>
+              <tr>
+                <th>Action ID</th>
+                <th>Action Type</th>
+                <th>Target</th>
+                <th>Requested By</th>
+                <th>Approval Status</th>
+                <th>Execution Status</th>
+                <th>Timestamp</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for action in case.containment_actions %}
+              {% set actor_name = action.requested_by.full_name if action.requested_by else 'System' %}
+              {% set action_date = action.created_at.strftime('%Y-%m-%d') if action.created_at else '' %}
+              <tr data-containment-row data-status="{{ action.status }}" data-action="{{ action.action_type }}" data-analyst="{{ actor_name|lower }}" data-date="{{ action_date }}">
+                <td><b>{{ containment_action_id(action) }}</b></td>
+                <td><i data-lucide="{% if action.action_type == 'BLOCK_IP' %}ban{% elif action.action_type == 'DISABLE_USER' %}user-x{% elif action.action_type == 'KILL_PROCESS' %}circle-stop{% elif action.action_type == 'ISOLATE_HOST' %}server-off{% elif action.action_type == 'QUARANTINE_FILE' %}file-lock-2{% else %}shield{% endif %}"></i>{{ action_label(action.action_type) }}</td>
+                <td><code>{{ action.target }}</code>{% if action.target_host %}<small>{{ action.target_host }}</small>{% endif %}</td>
+                <td>{{ actor_name }}</td>
+                <td><span class="badge containment-status containment-status-{{ action.status|lower }}">{{ containment_status_label(action.status) }}</span></td>
+                <td><span class="execution-chip execution-{{ action.status|lower }}">{{ 'Manual ' ~ containment_status_label(action.status) }}</span></td>
+                <td>{{ format_short_datetime(action.created_at) }} IST</td>
+                <td>
+                  <div class="containment-record-actions">
+                    <button class="btn btn-sm btn-ghost" type="button" data-containment-toggle="#containment-detail-{{ action.id }}"><i data-lucide="list-tree"></i>Logs</button>
+                    {% if false %}
+                    {% if action.status == 'PENDING_APPROVAL' %}
+                    {% if role_allows(current_user.role, 'Lead') %}
+                    <form method="post" action="{{ url_for('cases.containment_decision', case_id=case.id, action_id=action.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="decision" value="approve"><input type="hidden" name="notes" value="Approved from Response Actions.">
+                      <button class="btn btn-sm btn-primary"><i data-lucide="check-circle"></i>Approve</button>
+                    </form>
+                    <form method="post" action="{{ url_for('cases.containment_decision', case_id=case.id, action_id=action.id) }}" data-confirm-danger="Reject {{ containment_action_id(action) }}?">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="decision" value="reject"><input type="hidden" name="notes" value="Rejected from Response Actions.">
+                      <button class="btn btn-sm btn-ghost"><i data-lucide="x-circle"></i>Reject</button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+                    {% if action.status in ['APPROVED', 'QUEUED', 'FAILED'] %}
+                    <form method="post" action="{{ url_for('cases.execute_containment', case_id=case.id, action_id=action.id) }}" data-confirm-danger="Record manual execution for {{ containment_action_id(action) }}?">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="result_status" value="executed"><input type="hidden" name="execution_result" value="Manual execution completed from Response Actions.">
+                      <button class="btn btn-sm btn-primary"><i data-lucide="play-circle"></i>Execute</button>
+                    </form>
+                    {% endif %}
+                    {% if action.rollback_supported and action.status == 'EXECUTED' %}
+                    <form method="post" action="{{ url_for('cases.rollback_containment', case_id=case.id, action_id=action.id) }}" data-confirm-danger="Rollback {{ containment_action_id(action) }}?">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="rollback_result" value="Manual rollback completed from Response Actions.">
+                      <button class="btn btn-sm btn-ghost"><i data-lucide="rotate-ccw"></i>Rollback</button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+              <tr class="containment-detail-row" id="containment-detail-{{ action.id }}" hidden data-containment-detail>
+                <td colspan="8">
+                  <div class="containment-action-card">
+                    <div class="containment-action-card-main">
+                      <span>Asset <b>{{ (action.asset.hostname if action.asset else (case.asset.hostname if case.asset else 'Not Linked')) }}</b></span>
+                      <span>Risk <b class="asset-criticality-pill asset-criticality-{{ action.risk_level|lower }}">{{ action.risk_level }}</b></span>
+                      <span>Approval <b>{{ action.approval_requirement or 'Lead approval required' }}</b></span>
+                      <span>Provider <b>{{ provider_label(action.execution_provider) }}</b></span>
+                      <span>Approved By <b>{{ action.approved_by.full_name if action.approved_by else 'Pending' }}</b></span>
+                      <span>Executed By <b>{{ action.executed_by.full_name if action.executed_by else 'Not executed' }}</b></span>
+                    </div>
+                    <div class="containment-narrative">
+                      <div><h4>Reason</h4><p>{{ action.reason or 'No reason recorded.' }}</p></div>
+                      <div><h4>Analyst Notes</h4><p>{{ action.notes or 'No analyst notes recorded.' }}</p></div>
+                      <div><h4>Execution Result</h4><pre>{{ action.execution_result or action.output or 'No execution result yet.' }}</pre></div>
+                      <div><h4>Rollback Result</h4><pre>{{ action.rollback_result or action.rollback_status or 'No rollback recorded.' }}</pre></div>
+                    </div>
+                    <div class="containment-history-timeline">
+                      {% for event in containment_history.get(action.id, []) %}
+                      <span><b>{{ event.event }}</b><small>{{ event.actor }} / {{ event.at }}</small>{% if event.details %}<em>{{ event.details }}</em>{% endif %}</span>
+                      {% else %}<p class="muted">No lifecycle events recorded yet.</p>{% endfor %}
+                    </div>
+                    {% if false %}
+                    <div class="containment-detail-forms">
+                      {% if action.status == 'PENDING_APPROVAL' %}
+                      {% if role_allows(current_user.role, 'Lead') %}
+                      <form method="post" action="{{ url_for('cases.containment_decision', case_id=case.id, action_id=action.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="decision" value="approve">
+                        <input class="form-control form-control-sm" name="notes" placeholder="Approval notes">
+                        <button class="btn btn-sm btn-primary"><i data-lucide="check-circle"></i>Approve</button>
+                      </form>
+                      <form method="post" action="{{ url_for('cases.containment_decision', case_id=case.id, action_id=action.id) }}" data-confirm-danger="Reject this containment action?">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="decision" value="reject">
+                        <input class="form-control form-control-sm" name="notes" placeholder="Rejection reason" required>
+                        <button class="btn btn-sm btn-ghost"><i data-lucide="x-circle"></i>Reject</button>
+                      </form>
+                      {% endif %}
+                      {% endif %}
+                      {% if action.status in ['PENDING_APPROVAL', 'APPROVED'] %}
+                      {% if role_allows(current_user.role, 'Lead') %}
+                      <form method="post" action="{{ url_for('cases.containment_decision', case_id=case.id, action_id=action.id) }}" data-confirm-danger="Cancel this containment action?">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="decision" value="cancel">
+                        <input class="form-control form-control-sm" name="notes" placeholder="Cancellation notes">
+                        <button class="btn btn-sm btn-ghost"><i data-lucide="ban"></i>Cancel</button>
+                      </form>
+                      {% endif %}
+                      {% endif %}
+                      {% if action.status in ['APPROVED', 'QUEUED', 'FAILED'] %}
+                      <form method="post" action="{{ url_for('cases.execute_containment', case_id=case.id, action_id=action.id) }}" class="containment-execute-form" data-confirm-danger="Record manual execution for this containment action?">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <select class="form-select form-select-sm" name="result_status"><option value="executed">Executed</option><option value="failed">Failed</option></select>
+                        <textarea class="form-control form-control-sm" name="execution_result" rows="2" placeholder="Execution result, command summary, ticket ID, or error details" required></textarea>
+                        <button class="btn btn-sm btn-primary"><i data-lucide="play-circle"></i>Execute Action</button>
+                      </form>
+                      {% endif %}
+                      {% if action.rollback_supported and action.status == 'EXECUTED' %}
+                      <form method="post" action="{{ url_for('cases.rollback_containment', case_id=case.id, action_id=action.id) }}" class="containment-execute-form" data-confirm-danger="Rollback this containment action?">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <textarea class="form-control form-control-sm" name="rollback_result" rows="2" placeholder="Rollback result or validation notes"></textarea>
+                        <button class="btn btn-sm btn-ghost"><i data-lucide="rotate-ccw"></i>Rollback</button>
+                      </form>
+                      {% endif %}
+                    </div>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state compact-empty response-actions-empty">No response actions requested for this case yet.</div>
+        {% endif %}
+      </div>
+
+      <div class="glass investigation-panel" id="case-iocs">
+        <div class="section-head compact-head">
+          <div><h2>IOC Intelligence</h2><p>Sanitized, correlated indicators extracted from alerts, notes, and readable evidence content.</p></div>
+          <span class="badge status">{{ case.iocs|length }}</span>
+        </div>
+        <div class="ioc-investigation-grid">
+          {% for ioc in case.iocs %}
+          {% set display_value = sanitize_ioc_value(ioc.type, ioc.value) %}
+          {% if display_value %}
+          {% set counts = ioc_counts.get(ioc.id, {}) %}
+          <article class="ioc-intel-card compact-ioc-card">
+            <div class="ioc-main-line">
+              <span class="ioc-type ioc-{{ ioc_type_class(ioc.type) }}">{{ ioc_type_label(ioc.type) }}</span>
+              <b id="ioc-value-{{ ioc.id }}">{{ display_value }}</b>
+              <span class="confidence confidence-{{ ioc.confidence|lower }}">{{ ioc.confidence }}</span>
+            </div>
+            <div class="ioc-meta-grid">
+              <span>First seen <b>{{ format_short_datetime(ioc.first_seen_at or ioc.added_at) }}</b></span>
+              <span>Last seen <b>{{ format_short_datetime(ioc.last_seen_at or ioc.added_at) }}</b></span>
+              <span>Occurrences <b>{{ counts.get('occurrences', 1) }}</b></span>
+              <span>Related cases <b>{{ counts.get('cases', 1) }}</b></span>
+              <span>Related alerts <b>{{ counts.get('alerts', 0) }}</b></span>
+              <span>System <b>{{ ioc.source_system or case.source }}</b></span>
+            </div>
+            {% if ioc.analyst_notes %}<p class="ioc-note">{{ ioc.analyst_notes }}</p>{% endif %}
+            <div class="ioc-actions">
+              <button class="btn btn-sm btn-ghost" type="button" title="Copy IOC value" data-copy-target="#ioc-value-{{ ioc.id }}"><i data-lucide="copy"></i>Copy</button>
+              {% if can_investigate %}<button class="btn btn-sm btn-primary" type="button" title="Use IOC as containment target" data-containment-ioc data-ioc-type="{{ ioc.type }}" data-ioc-value="{{ display_value }}" data-ioc-confidence="{{ ioc.confidence }}" data-ioc-alerts="{{ counts.get('alerts', 0) }}"><i data-lucide="shield-plus"></i>Contain</button>{% endif %}
+              <a class="btn btn-sm btn-ghost" title="Export IOC metadata" href="{{ url_for('cases.export_ioc', ioc_id=ioc.id) }}"><i data-lucide="download"></i>Export</a>
+              <a class="btn btn-sm btn-ghost" title="Search alerts with this IOC" href="{{ url_for('alerts.alerts', status='', ioc=display_value, type=ioc.type) }}"><i data-lucide="radar"></i>Alerts</a>
+              <a class="btn btn-sm btn-ghost" title="Search cases with this IOC" href="{{ url_for('cases.cases', ioc=display_value, type=ioc.type) }}"><i data-lucide="briefcase"></i>Cases</a>
+            </div>
+          </article>
+          {% endif %}
+          {% else %}<div class="empty-state compact-empty">No IOCs yet. AstoraSOC will extract indicators from alerts, notes, and readable evidence content.</div>{% endfor %}
+        </div>
+        {% if can_investigate %}
+        <form method="post" action="{{ url_for('cases.add_ioc', case_id=case.id) }}" class="ioc-add-form">
+          {{ ioc_form.hidden_tag() }}
+          {{ ioc_form.type(class="form-select") }}{{ ioc_form.value(class="form-control", placeholder="Indicator value") }}{{ ioc_form.confidence(class="form-select") }}
+          {{ ioc_form.source(class="form-control", placeholder="Source") }}{{ ioc_form.tags(class="form-control", placeholder="Tags") }}{{ ioc_form.analyst_notes(class="form-control", rows=2, placeholder="Analyst notes") }}
+          <button class="btn btn-primary"><i data-lucide="plus"></i>Add IOC</button>
+        </form>
+        {% endif %}
+      </div>
+
+      <div class="case-lower-grid">
+        <div class="glass investigation-panel" id="case-evidence">
+          <div class="section-head compact-head">
+            <div><h2>Evidence</h2><p>Case files, hashes, and quick previews.</p></div>
+            <span class="badge status">{{ case.evidence|length }}</span>
+          </div>
+          <div class="evidence-list">
+            {% for item in case.evidence %}
+            {% set meta = evidence_meta.get(item.id, {}) %}
+            <article class="evidence-card evidence-tile">
+              <div class="evidence-tile-media">
+                {% if meta.get('kind') == 'image' and meta.get('previewable') %}
+                <a href="{{ url_for('cases.preview_evidence', case_id=case.id, evidence_id=item.id) }}" target="_blank" rel="noopener" title="Open preview">
+                  <img src="{{ url_for('cases.preview_evidence', case_id=case.id, evidence_id=item.id) }}" alt="{{ item.original_filename }}">
+                </a>
+                {% else %}
+                <span class="evidence-icon"><i data-lucide="{% if meta.get('kind') == 'pdf' %}file-text{% elif meta.get('kind') == 'image' %}image{% else %}file{% endif %}"></i></span>
+                {% endif %}
+              </div>
+              <div class="evidence-tile-body">
+                <b class="evidence-name" title="{{ item.original_filename }}">{{ item.original_filename }}</b>
+                <small>{{ meta.get('size_label', 'Unknown') }} / {{ item.uploaded_by.full_name if item.uploaded_by else 'System' }}</small>
+                <code title="{{ item.sha256 or 'Not Available' }}">SHA256 {{ (item.sha256 or 'Not Available')[:12] }}...</code>
+              </div>
+              <div class="evidence-actions">
+                {% if meta.get('previewable') %}
+                <a class="icon-btn" href="{{ url_for('cases.preview_evidence', case_id=case.id, evidence_id=item.id) }}" target="_blank" rel="noopener" title="Preview evidence" aria-label="Preview evidence"><i data-lucide="eye"></i></a>
+                {% endif %}
+                <a class="icon-btn" href="{{ url_for('cases.download_evidence', case_id=case.id, evidence_id=item.id) }}" title="Download evidence" aria-label="Download evidence"><i data-lucide="download"></i></a>
+                {% if can_delete_evidence %}
+                <form method="post" action="{{ url_for('cases.delete_evidence', case_id=case.id, evidence_id=item.id) }}" data-confirm-danger="Delete this evidence file?">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="icon-btn evidence-delete-btn danger-icon" type="submit" title="Delete evidence" aria-label="Delete evidence"><i data-lucide="trash-2"></i></button>
+                </form>
+                {% endif %}
+              </div>
+            </article>
+            {% else %}<div class="empty-state compact-empty">No evidence uploaded.</div>{% endfor %}
+          </div>
+          {% if can_investigate %}
+          <form method="post" action="{{ url_for('cases.add_evidence', case_id=case.id) }}" enctype="multipart/form-data" class="stack" data-case-async data-loading-message="Uploading evidence" data-case-target="#case-evidence" data-case-extra-targets="#case-iocs,.sticky-investigation">
+            {{ evidence_form.hidden_tag() }}
+            <div class="evidence-upload-row">
+              <label class="raven-file-control">
+                <span class="raven-file-action"><i data-lucide="paperclip"></i>Attach file</span>
+                <span class="raven-file-name" data-file-name>No evidence selected</span>
+                {{ evidence_form.file(class="raven-file-native") }}
+              </label>
+              <button class="btn btn-primary"><i data-lucide="upload"></i>Upload Evidence</button>
+            </div>
+          </form>
+          {% endif %}
+        </div>
+
+        <div class="glass investigation-panel">
+          <div class="section-head compact-head">
+            <div><h2>Tasks</h2><p>Investigation checklist and closure readiness.</p></div>
+            <span class="badge status">{{ active_tasks|length }} active</span>
+          </div>
+          <div class="task-list">
+            {% for task in active_tasks %}
+            <div class="task-row investigation-task">
+              {% if review_mode or not can_investigate %}
+              <div class="task-toggle-form review-task-readonly"><span class="check"></span><span>{{ task.title }}<small>{{ task.source or 'Analyst' }}{% if task.playbook_name %} / {{ task.playbook_name }}{% endif %}</small></span></div>
+              {% else %}
+              <form method="post" action="{{ url_for('cases.toggle_task', case_id=case.id, task_id=task.id) }}" class="task-toggle-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="check" title="Mark task complete"></button><span>{{ task.title }}<small><b class="task-origin task-origin-{{ (task.source or 'Analyst')|lower }}">{{ task.source or 'Analyst' }}</b>{% if task.playbook_name %} {{ task.playbook_name }}{% else %} Analyst-created{% endif %}</small></span>
+              </form>
+              {% endif %}
+              {% if can_investigate %}
+              <details class="task-edit">
+                <summary class="icon-btn" title="Edit task" aria-label="Edit task"><i data-lucide="pencil"></i></summary>
+                <form method="post" action="{{ url_for('cases.edit_task', case_id=case.id, task_id=task.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input class="form-control form-control-sm" name="title" value="{{ task.title }}" required>
+                  <button class="btn btn-sm btn-primary">Save</button>
+                </form>
+              </details>
+              <form method="post" action="{{ url_for('cases.delete_task', case_id=case.id, task_id=task.id) }}" class="task-delete-form" data-confirm-danger="Delete this task?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="icon-btn task-delete-btn" title="Delete task"><i data-lucide="trash-2"></i></button>
+              </form>
+              {% endif %}
+            </div>
+            {% else %}<div class="empty-state compact-empty">No active tasks.</div>{% endfor %}
+          </div>
+          <details class="completed-tasks">
+            <summary>Completed Tasks <span>{{ completed_tasks|length }}</span></summary>
+            {% for task in completed_tasks %}
+            <div class="task-row investigation-task done">
+              {% if review_mode or not can_investigate %}
+              <div class="task-toggle-form review-task-readonly"><span class="check">{{ '&#10003;'|safe }}</span><span>{{ task.title }}<small>{{ task.completed_by.full_name if task.completed_by else 'System' }} / {{ format_short_datetime(task.completed_at) }} / {{ task.source or 'Analyst' }}{% if task.playbook_name %} / {{ task.playbook_name }}{% endif %}</small></span></div>
+              {% else %}
+              <form method="post" action="{{ url_for('cases.toggle_task', case_id=case.id, task_id=task.id) }}" class="task-toggle-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="check" title="Reopen task">{{ '&#10003;'|safe }}</button>
+                <span>{{ task.title }}<small>{{ task.completed_by.full_name if task.completed_by else 'System' }} / {{ format_short_datetime(task.completed_at) }} / <b class="task-origin task-origin-{{ (task.source or 'Analyst')|lower }}">{{ task.source or 'Analyst' }}</b>{% if task.playbook_name %} {{ task.playbook_name }}{% endif %}</small></span>
+              </form>
+              {% endif %}
+              {% if can_investigate %}
+              <details class="task-edit">
+                <summary class="icon-btn" title="Edit task" aria-label="Edit task"><i data-lucide="pencil"></i></summary>
+                <form method="post" action="{{ url_for('cases.edit_task', case_id=case.id, task_id=task.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input class="form-control form-control-sm" name="title" value="{{ task.title }}" required>
+                  <button class="btn btn-sm btn-primary">Save</button>
+                </form>
+              </details>
+              <form method="post" action="{{ url_for('cases.delete_task', case_id=case.id, task_id=task.id) }}" class="task-delete-form" data-confirm-danger="Delete this task?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="icon-btn task-delete-btn" title="Delete task"><i data-lucide="trash-2"></i></button>
+              </form>
+              {% endif %}
+            </div>
+            {% else %}<div class="empty-state compact-empty">Nothing completed yet.</div>{% endfor %}
+          </details>
+          {% if can_investigate %}
+          <form method="post" action="{{ url_for('cases.add_task', case_id=case.id) }}" class="quick-add-form">
+            {{ task_form.hidden_tag() }}{{ task_form.title(class="form-control", placeholder="Add investigation task") }}<button class="btn btn-primary"><i data-lucide="plus"></i>Add</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <section class="glass investigation-panel" id="case-journal">
+        <div class="section-head compact-head">
+          <div><h2>Investigation Journal</h2><p>Searchable analyst notes. Multiline notes are preserved.</p></div>
+          <input class="form-control note-search" type="search" placeholder="Search notes" data-note-search>
+        </div>
+        <div class="journal-list" data-note-list>
+          {% for note in case.notes %}
+          <article class="journal-note" data-note-item>
+            <div><b>{% if note.is_pinned %}<i data-lucide="pin"></i>{% endif %}{{ note.created_by.full_name if note.created_by else 'System' }}</b><small>{{ format_short_datetime(note.created_at) }} IST{% if note.updated_at %} / edited {{ format_short_datetime(note.updated_at) }} IST{% endif %}</small></div>
+            <pre id="note-body-{{ note.id }}">{{ note.body }}</pre>
+            <button class="btn btn-sm btn-ghost" type="button" data-copy-target="#note-body-{{ note.id }}"><i data-lucide="copy"></i>Copy</button>
+            {% if can_investigate and note.created_by_id == current_user.id %}
+            <div class="journal-note-actions">
+              <details class="note-edit">
+                <summary class="icon-btn" title="Edit note" aria-label="Edit note"><i data-lucide="pencil"></i></summary>
+              <form method="post" action="{{ url_for('cases.edit_note', case_id=case.id, note_id=note.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <textarea class="form-control" name="body" rows="5" required>{{ note.body }}</textarea>
+                <label class="checkline"><input type="checkbox" name="is_pinned" value="1" {% if note.is_pinned %}checked{% endif %}> Pin finding</label>
+                <button class="btn btn-sm btn-primary">Save note</button>
+              </form>
+              </details>
+              <form method="post" action="{{ url_for('cases.delete_note', case_id=case.id, note_id=note.id) }}" data-confirm-danger="Delete this investigation note?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="icon-btn danger-icon" title="Delete note" aria-label="Delete note"><i data-lucide="trash-2"></i></button>
+              </form>
+            </div>
+            {% endif %}
+          </article>
+          {% else %}<div class="empty-state compact-empty">No investigation notes.</div>{% endfor %}
+        </div>
+        {% if can_investigate %}
+        <form method="post" action="{{ url_for('cases.add_note', case_id=case.id) }}" class="journal-form" data-case-async data-loading-message="Saving note" data-case-target="#case-journal" data-case-extra-targets="#case-iocs,.sticky-investigation">
+          {{ note_form.hidden_tag() }}{{ note_form.body(class="form-control", rows=5, placeholder="Write investigation findings, commands run, containment notes, or reviewer-ready summary") }}<button class="btn btn-primary"><i data-lucide="book-plus"></i>Add Note</button>
+        </form>
+        {% endif %}
+      </section>
+    </div>
+
+    <aside class="case-side-column">
+      <div class="glass investigation-panel sticky-investigation">
+        <div class="section-head compact-head">
+          <div><h2>Timeline</h2><p>User, action, and time.</p></div>
+          <span class="badge status">{{ case.timeline|length }}</span>
+        </div>
+        <ul class="timeline timeline-scroll investigation-timeline">
+          {% for event in case.timeline %}
+          <li class="timeline-event timeline-event-{{ event.event_type|lower|replace(' ', '-') }}">
+            <b><span>{{ event.event_type }}</span><em>{{ event.actor.full_name if event.actor else 'System' }}</em></b>
+            <span>{{ event.description }}</span>
+            <small>{{ format_short_datetime(event.created_at) }} IST</small>
+          </li>
+          {% else %}<li class="muted">No timeline entries.</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="glass investigation-panel">
+        <div class="section-head compact-head">
+          <div><h2>Related Cases</h2><p>Correlated by asset, IOC, host, user, vulnerability, or detection rule.</p></div>
+        </div>
+        <div class="related-activity-list related-case-list">
+          {% for item in related_cases %}
+          <a href="{{ url_for('cases.case_detail', case_id=item.id) }}">
+            <span>{{ tracking_label(item) }}</span>
+            <b>{{ item.title }}</b>
+            <small><em class="badge status status-{{ item.status|lower|replace('_', '-') }}">{{ status_label(item.status) }}</em><em class="badge sev-{{ item.severity|lower }}">{{ item.severity }}</em></small>
+          </a>
+          {% else %}
+          {% for item in related_activity %}
+          <a href="{{ url_for('cases.cases') }}">
+            <span>{{ item.label }}</span>
+            <b>{{ item.count }}</b>
+            <small>{{ item.value }}</small>
+          </a>
+          {% else %}<p class="muted">No related cases found yet.</p>{% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+    </aside>
+  </section>
+</div>
+{% endblock %}

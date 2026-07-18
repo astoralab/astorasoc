@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - AstoraSOC{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ title }}</h1><p>Create access only. Users complete their own profile after signing in.</p></div></div>
+<form method="post" class="glass form-grid narrow" autocomplete="off">
+  {{ form.hidden_tag() }}
+  {% if form.errors %}
+  <div class="span-2 form-errors">
+    {% for field, errors in form.errors.items() %}
+      {% for error in errors %}<p>{{ field|replace('_', ' ')|title }}: {{ error }}</p>{% endfor %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div>{{ form.username.label(class="form-label") }}{{ form.username(class="form-control") }}</div>
+  <div>{{ form.role.label(class="form-label") }}{{ form.role(class="form-select") }}</div>
+  <div>{{ form.password.label(class="form-label") }}{{ form.password(class="form-control", placeholder="Set or reset password") }}</div>
+  <div class="span-2 actions">{{ form.submit(class="btn btn-primary") }}<a class="btn btn-ghost" href="{{ url_for('users.users') }}">Cancel</a></div>
+</form>
+{% endblock %}
